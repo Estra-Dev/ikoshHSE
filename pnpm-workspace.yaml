@@ -1,0 +1,11 @@
+packages:
+  - "apps/*"
+
+allowBuilds:
+  esbuild: true
+  sharp: false
+  unrs-resolver: false
+  mongodb-memory-server: true
+
+minimumReleaseAgeExclude:
+  - '@digit-auth/react@0.1.6'

@@ -1,0 +1,15 @@
+{
+  "name": "ikosh-hse",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "dev:api": "pnpm --filter @ikosh/api dev",
+    "build:web": "pnpm --filter web build",
+    "build:api": "pnpm --filter @ikosh/api build",
+    "type-check:api": "pnpm --filter @ikosh/api type-check",
+    "test:api": "pnpm --filter @ikosh/api test",
+    "test:web": "pnpm --filter web test",
+    "lint:web": "pnpm --filter web lint"
+  }
+}
