@@ -1,32 +1,70 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { InfoIcon } from "@/components/icons";
 
-type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+export type ButtonSize = "sm" | "md";
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   primary:
-    "bg-blue-700 text-white hover:bg-blue-800 disabled:hover:bg-blue-700",
+    "bg-navy-900 text-white shadow-sm hover:bg-navy-800 active:bg-navy-950 disabled:hover:bg-navy-900",
   secondary:
-    "border border-zinc-300 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800",
+    "border border-line bg-surface text-navy-800 hover:border-navy-200 hover:bg-navy-50 active:bg-navy-100",
   danger:
-    "border border-red-300 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40",
-  ghost:
-    "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800",
+    "bg-red-600 text-white shadow-sm hover:bg-red-700 active:bg-red-800 disabled:hover:bg-red-600",
+  ghost: "text-muted hover:bg-navy-50 hover:text-navy-900",
 };
+
+const SIZE_CLASSES: Record<ButtonSize, string> = {
+  sm: "px-3 py-1.5 text-xs",
+  md: "px-4 py-2 text-sm",
+};
+
+/** Shared button classes for links that must look like buttons. */
+export function buttonStyles(
+  variant: ButtonVariant = "primary",
+  size: ButtonSize = "md",
+  className = "",
+): string {
+  return [
+    "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-600 disabled:cursor-not-allowed disabled:opacity-60",
+    VARIANT_CLASSES[variant],
+    SIZE_CLASSES[size],
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
+  size?: ButtonSize;
+  isLoading?: boolean;
 }
 
 export function Button({
   variant = "primary",
+  size = "md",
+  isLoading = false,
   className = "",
+  disabled,
+  children,
   ...props
 }: ButtonProps) {
   return (
     <button
       {...props}
-      className={`rounded-lg px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${VARIANT_CLASSES[variant]} ${className}`}
-    />
+      disabled={disabled || isLoading}
+      aria-busy={isLoading || undefined}
+      className={buttonStyles(variant, size, className)}
+    >
+      {isLoading && (
+        <span
+          aria-hidden="true"
+          className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
+        />
+      )}
+      {children}
+    </button>
   );
 }
 
@@ -34,14 +72,19 @@ interface ActionLinkProps {
   href: string;
   children: ReactNode;
   className?: string;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
 }
 
-export function ActionLink({ href, children, className = "" }: ActionLinkProps) {
+export function ActionLink({
+  href,
+  children,
+  className = "",
+  variant = "primary",
+  size = "md",
+}: ActionLinkProps) {
   return (
-    <a
-      href={href}
-      className={`rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-800 ${className}`}
-    >
+    <a href={href} className={buttonStyles(variant, size, className)}>
       {children}
     </a>
   );
@@ -49,9 +92,16 @@ export function ActionLink({ href, children, className = "" }: ActionLinkProps) 
 
 export function Spinner({ label }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center gap-2 py-8 text-sm text-zinc-500">
-      <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-blue-700" />
-      {label ?? "Loading..."}
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex items-center justify-center gap-3 py-10 text-sm text-muted"
+    >
+      <span
+        aria-hidden="true"
+        className="h-5 w-5 animate-spin rounded-full border-2 border-navy-200 border-t-navy-800"
+      />
+      <span>{label ?? "Loading..."}</span>
     </div>
   );
 }
@@ -59,21 +109,29 @@ export function Spinner({ label }: { label?: string }) {
 export function ErrorState({
   title = "Something went wrong",
   message,
+  action,
 }: {
   title?: string;
   message?: string;
+  action?: ReactNode;
 }) {
   return (
     <div
       role="alert"
-      className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+      className="rounded-card border border-red-200 bg-surface p-6 shadow-card"
     >
-      <h2 className="text-sm font-semibold text-red-700 dark:text-red-400">
-        {title}
-      </h2>
-      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-        {message ?? "Please try again."}
-      </p>
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
+          <InfoIcon size={18} />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-red-700">{title}</h2>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            {message ?? "Please try again."}
+          </p>
+          {action && <div className="mt-4">{action}</div>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -81,18 +139,21 @@ export function ErrorState({
 export function EmptyState({
   title,
   description,
+  action,
 }: {
   title: string;
   description?: string;
+  action?: ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-      <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-        {title}
-      </p>
+    <div className="rounded-card border border-dashed border-navy-200 bg-surface/60 px-6 py-12 text-center">
+      <p className="text-sm font-semibold text-navy-900">{title}</p>
       {description && (
-        <p className="mt-1 text-sm text-zinc-500">{description}</p>
+        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted">
+          {description}
+        </p>
       )}
+      {action && <div className="mt-5 flex justify-center">{action}</div>}
     </div>
   );
 }

@@ -4,8 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { Button, ErrorState, Spinner } from "@/components/ui/feedback";
+import { Button, buttonStyles, ErrorState, Spinner } from "@/components/ui/feedback";
 import { SelectField } from "@/components/ui/fields";
+import { PageHeader } from "@/components/ui/page-header";
+import {
+  ArrowLeftIcon,
+  ProfileIcon,
+} from "@/components/icons";
 import { EmploymentInfoForm } from "@/components/employees/employment-info-form";
 import {
   formatEnum,
@@ -54,11 +59,11 @@ function RolePanel({ employee }: { employee: EmployeeFull }) {
   }
 
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-white">
+    <section className="rounded-card border border-line bg-surface p-6 shadow-card">
+      <h2 className="text-sm font-semibold text-ink">
         IKOSH role
       </h2>
-      <p className="mt-1 text-sm text-zinc-500">
+      <p className="mt-1 text-sm leading-6 text-muted">
         Controls what this employee can see and do inside IKOSH HSE. You cannot
         change your own role.
       </p>
@@ -89,7 +94,7 @@ function RolePanel({ employee }: { employee: EmployeeFull }) {
           )}
 
           {!updateRole.isError && feedback && (
-            <p className="text-sm text-green-700 dark:text-green-400">
+            <p className="text-sm text-emerald-700">
               {feedback}
             </p>
           )}
@@ -122,11 +127,11 @@ function StatusPanel({ employee }: { employee: EmployeeFull }) {
 
   if (employee.isActive) {
     return (
-      <section className="rounded-2xl border border-red-200 bg-white p-6 shadow-sm dark:border-red-900/60 dark:bg-zinc-900">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-white">
+      <section className="rounded-card border border-red-200 bg-surface p-6 shadow-card">
+        <h2 className="text-sm font-semibold text-ink">
           Employment status
         </h2>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm leading-6 text-muted">
           Deactivating an employee hides them from the directory and blocks
           their access to all IKOSH HSE features. You cannot deactivate
           yourself.
@@ -175,11 +180,11 @@ function StatusPanel({ employee }: { employee: EmployeeFull }) {
   }
 
   return (
-    <section className="rounded-2xl border border-green-200 bg-white p-6 shadow-sm dark:border-green-900/60 dark:bg-zinc-900">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-white">
+    <section className="rounded-card border border-emerald-200 bg-surface p-6 shadow-card">
+      <h2 className="text-sm font-semibold text-ink">
         Employment status
       </h2>
-      <p className="mt-1 text-sm text-zinc-500">
+      <p className="mt-1 text-sm leading-6 text-muted">
         This employee is currently inactive and cannot access IKOSH HSE.
       </p>
 
@@ -239,8 +244,9 @@ export default function EmployeeProfilePage() {
         />
         <Link
           href="/employees"
-          className="inline-block text-sm font-medium text-blue-700 hover:underline dark:text-blue-400"
+          className={buttonStyles("secondary", "sm")}
         >
+          <ArrowLeftIcon size={16} />
           Back to directory
         </Link>
       </div>
@@ -257,51 +263,48 @@ export default function EmployeeProfilePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-white">
-            Employee Profile
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            {isSelf
-              ? "This is your directory entry as others see it."
-              : "Details as visible to you."}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          {isSelf && (
-            <Link
-              href="/employees/me"
-              className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-            >
-              Manage my contact details
+      <PageHeader
+        eyebrow="People"
+        title="Employee profile"
+        description={
+          isSelf
+            ? "This is your directory entry as others see it."
+            : "Details as visible to you."
+        }
+        actions={
+          <>
+            {isSelf && (
+              <Link
+                href="/employees/me"
+                className={buttonStyles("secondary", "sm")}
+              >
+                <ProfileIcon size={16} />
+                Manage my contact details
+              </Link>
+            )}
+            <Link href="/employees" className={buttonStyles("secondary", "sm")}>
+              <ArrowLeftIcon size={16} />
+              Back to directory
             </Link>
-          )}
-          <Link
-            href="/employees"
-            className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-          >
-            Back to directory
-          </Link>
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <section className="rounded-card border border-line bg-surface p-6 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-lg font-semibold text-zinc-900 dark:text-white">
+            <p className="text-lg font-semibold tracking-tight text-ink">
               {formatName(employee)}
             </p>
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-muted">
               {employee.jobTitle ?? "No job title recorded"}
             </p>
           </div>
 
           {isFull ? (
             <div className="flex flex-wrap gap-2">
-              <Badge tone="violet">{formatEnum(employee.ikoshRole)}</Badge>
-              <Badge tone={employee.isActive ? "green" : "red"}>
+              <Badge tone="navy">{formatEnum(employee.ikoshRole)}</Badge>
+              <Badge tone={employee.isActive ? "green" : "red"} dot>
                 {employee.isActive ? "Active" : "Inactive"}
               </Badge>
               <Badge tone={employee.emailVerified ? "green" : "amber"}>
@@ -349,7 +352,7 @@ export default function EmployeeProfilePage() {
           />
         </SectionCard>
       ) : (
-        <p className="rounded-2xl border border-dashed border-zinc-300 p-4 text-sm text-zinc-500 dark:border-zinc-700">
+        <p className="rounded-card border border-dashed border-navy-200 p-4 text-sm leading-6 text-muted">
           Employment and administrative details are restricted to management
           roles.
         </p>

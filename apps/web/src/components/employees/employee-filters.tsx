@@ -55,7 +55,7 @@ export function EmployeeFilters({
   }, [searchValue, filters.q, onChange]);
 
   return (
-    <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-4 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="grid gap-3 rounded-card border border-line bg-surface p-4 shadow-card sm:grid-cols-2 lg:grid-cols-4">
       <TextField
         label="Search"
         id="employee-search"
@@ -145,7 +145,7 @@ export function EmployeeFilters({
         <button
           type="button"
           onClick={() => router.replace("/employees")}
-          className="rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+          className="rounded-lg px-3 py-2 text-sm font-medium text-muted transition hover:bg-navy-50 hover:text-navy-900"
         >
           Reset filters
         </button>

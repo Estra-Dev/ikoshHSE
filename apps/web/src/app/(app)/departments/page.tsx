@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button, ErrorState, Spinner } from "@/components/ui/feedback";
+import { Button, EmptyState, ErrorState, Spinner } from "@/components/ui/feedback";
+import { PageHeader } from "@/components/ui/page-header";
 import { TD, TH, Table, TableBody, TableHead, TableRow } from "@/components/ui/table";
 import { DepartmentForm } from "@/components/departments/department-form";
 import {
@@ -92,22 +93,18 @@ export default function DepartmentsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-white">
-            Departments
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Organizational units used to group employees in the directory.
-          </p>
-        </div>
-
-        {canManage && !formTarget && (
-          <Button onClick={() => setFormTarget("new")}>
-            New department
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        eyebrow="People"
+        title="Departments"
+        description="Organizational units used to group employees in the directory."
+        actions={
+          canManage && !formTarget ? (
+            <Button onClick={() => setFormTarget("new")}>
+              New department
+            </Button>
+          ) : undefined
+        }
+      />
 
       {formTarget !== null && (
         <DepartmentForm
@@ -120,7 +117,7 @@ export default function DepartmentsPage() {
       {actionError && (
         <p
           role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
         >
           {actionError}
         </p>
@@ -129,16 +126,14 @@ export default function DepartmentsPage() {
       {departmentsQuery.isLoading ? (
         <Spinner label="Loading departments..." />
       ) : departments.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            No departments yet
-          </p>
-          <p className="mt-1 text-sm text-zinc-500">
-            {canManage
+        <EmptyState
+          title="No departments yet"
+          description={
+            canManage
               ? "Create the first department to start organizing employees."
-              : "An administrator has not created any departments yet."}
-          </p>
-        </div>
+              : "An administrator has not created any departments yet."
+          }
+        />
       ) : (
         <Table>
           <TableHead>
@@ -154,25 +149,21 @@ export default function DepartmentsPage() {
           <TableBody>
             {departments.map((department) => (
               <TableRow key={department.id}>
-                <TD className="font-medium text-zinc-900 dark:text-white">
+                <TD className="font-medium text-ink">
                   {department.name}
                   {department.description && (
-                    <p className="mt-0.5 max-w-md text-xs font-normal text-zinc-500">
+                    <p className="mt-0.5 max-w-md text-xs font-normal text-muted">
                       {department.description}
                     </p>
                   )}
                 </TD>
-                <TD className="text-zinc-600 dark:text-zinc-400">
-                  {department.code}
-                </TD>
-                <TD className="text-zinc-600 dark:text-zinc-400">
+                <TD className="text-muted">{department.code}</TD>
+                <TD className="text-muted">
                   {department.head
                     ? `${department.head.firstName} ${department.head.lastName}`
                     : "—"}
                 </TD>
-                <TD className="text-zinc-600 dark:text-zinc-400">
-                  {department.memberCount}
-                </TD>
+                <TD className="tabular text-muted">{department.memberCount}</TD>
                 {canManage && (
                   <TD>
                     <Badge

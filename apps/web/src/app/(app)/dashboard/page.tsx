@@ -1,138 +1,220 @@
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
+import { ApiError } from "@/lib/api/client";
+import { useHseDashboard, useSiteHseDashboards } from "@/lib/api/hse";
+import { useProjects, useSites } from "@/lib/api/worksites";
+import { Button, ErrorState, Spinner } from "@/components/ui/feedback";
+import { Card, CardBody } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
+import { RefreshIcon } from "@/components/icons";
+import { CategoryMix } from "@/components/dashboard/category-mix";
+import { DashboardKpis } from "@/components/dashboard/dashboard-kpis";
+import { LatestReports } from "@/components/dashboard/latest-reports";
+import { OutstandingQueues } from "@/components/dashboard/outstanding-queues";
+import { ReportingTrend } from "@/components/dashboard/reporting-trend";
+import { SitePerformance } from "@/components/dashboard/site-performance";
+import { DashboardScopeControls } from "@/components/dashboard/scope-controls";
+import { StatusPipeline } from "@/components/dashboard/status-pipeline";
 import {
-  useDepartments,
-} from "@/lib/api/departments";
-import { EMPTY_DIRECTORY_FILTERS } from "@/lib/api/directory-filters";
-import {
-  useEmployeeDirectory,
-  useMe,
-} from "@/lib/api/employees";
-import { Badge } from "@/components/ui/badge";
-import { ErrorState, Spinner } from "@/components/ui/feedback";
+  deriveDashboardKpis,
+  EMPTY_DASHBOARD_FILTERS,
+  selectComparisonSites,
+  type DashboardRange,
+  type DashboardScopeFilters,
+} from "@/lib/hse-dashboard";
 
-function StatCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-        {label}
-      </p>
-      <p className="mt-2 truncate text-2xl font-bold text-zinc-900 dark:text-white">
-        {value}
-      </p>
-      {hint && <p className="mt-1 text-sm text-zinc-500">{hint}</p>}
-    </div>
-  );
+function plural(count: number, singular: string): string {
+  return `${count} ${singular}${count === 1 ? "" : "s"}`;
 }
 
 export default function DashboardPage() {
-  const me = useMe();
-  const departments = useDepartments();
-  const directory = useEmployeeDirectory({
-    filters: { ...EMPTY_DIRECTORY_FILTERS, limit: 1 },
-  });
+  const [filters, setFilters] = useState<DashboardScopeFilters>(
+    EMPTY_DASHBOARD_FILTERS,
+  );
 
-  if (me.isLoading) {
-    return <Spinner label="Loading your profile..." />;
+  const projects = useProjects();
+  const sites = useSites({ projectId: filters.projectId });
+  const dashboardQuery = useHseDashboard(filters);
+
+  const siteList = sites.data?.sites ?? [];
+  const comparisonSites = selectComparisonSites(siteList, filters);
+  const comparisonQueries = useSiteHseDashboards(
+    filters,
+    comparisonSites.map((site) => site.id),
+  );
+
+  const dashboard = dashboardQuery.data?.data;
+  const kpis = deriveDashboardKpis(dashboard);
+
+  const selectedProject = filters.projectId
+    ? projects.data?.projects.find(
+        (project) => project.id === filters.projectId,
+      )
+    : undefined;
+  const selectedSite = filters.siteId
+    ? siteList.find((site) => site.id === filters.siteId)
+    : undefined;
+
+  const scopeLabel = filters.siteId
+    ? (selectedSite?.name ?? "Selected site")
+    : filters.projectId
+      ? (selectedProject?.name ?? "Selected project")
+      : "All accessible sites";
+
+  const scopeNote = dashboard
+    ? `${plural(dashboard.totals.projects, "project")} · ${plural(
+        dashboard.totals.sites,
+        "site",
+      )}`
+    : dashboardQuery.isError
+      ? "Scope unavailable"
+      : "Loading scope…";
+
+  const comparisonError =
+    dashboardQuery.error instanceof ApiError &&
+    dashboardQuery.error.status === 404 &&
+    Boolean(filters.projectId);
+
+  function handleRangeChange(range: DashboardRange) {
+    setFilters((current) => ({ ...current, range }));
   }
 
-  if (me.isError) {
-    return (
-      <ErrorState
-        title="Unable to load your IKOSH profile"
-        message={me.error instanceof Error ? me.error.message : undefined}
-      />
-    );
+  function handleProjectChange(projectId: string) {
+    setFilters((current) => ({ ...current, projectId, siteId: "" }));
   }
 
-  const employee = me.data?.employee;
-  const totalEmployees =
-    directory.data?.pagination.total !== undefined
-      ? String(directory.data.pagination.total)
-      : directory.isLoading
-        ? "..."
-        : "Unavailable";
+  function handleSiteChange(siteId: string) {
+    setFilters((current) => ({ ...current, siteId }));
+  }
+
+  function clearScope() {
+    setFilters(EMPTY_DASHBOARD_FILTERS);
+  }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-white">
-          Dashboard
-        </h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Welcome back, {employee?.firstName || "colleague"}.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="HSE operations"
+        title="HSE command centre"
+        description="Incidents, near misses and reporting assurance across the sites in your scope. Every figure is derived from live, site-scoped HSE records."
+        actions={
+          <Button
+            variant="secondary"
+            onClick={() => {
+              void dashboardQuery.refetch();
+              void comparisonQueries.forEach((query) => query.refetch());
+            }}
+            isLoading={dashboardQuery.isFetching}
+          >
+            <RefreshIcon size={16} />
+            Refresh
+          </Button>
+        }
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="My role"
-          value={employee ? employee.ikoshRole.replace("_", " ") : "Unknown"}
-          hint="IKOSH application role"
-        />
-        <StatCard
-          label="My department"
-          value={employee?.department?.name ?? "Unassigned"}
-        />
-        <StatCard
-          label="Employees"
-          value={totalEmployees}
-          hint="Active employee records"
-        />
-        <StatCard
-          label="Departments"
-          value={
-            departments.isLoading
-              ? "..."
-              : departments.isError
-                ? "Unavailable"
-                : String(departments.data?.departments.length ?? 0)
+      <DashboardScopeControls
+        range={filters.range}
+        projectId={filters.projectId}
+        siteId={filters.siteId}
+        projects={projects.data?.projects ?? []}
+        sites={siteList}
+        scopeLabel={scopeLabel}
+        scopeNote={scopeNote}
+        isFetching={dashboardQuery.isFetching}
+        lastUpdated={dashboard?.lastUpdated}
+        projectsLoading={projects.isLoading}
+        sitesLoading={sites.isLoading}
+        onRangeChange={handleRangeChange}
+        onProjectChange={handleProjectChange}
+        onSiteChange={handleSiteChange}
+      />
+
+      <DashboardKpis kpis={kpis} />
+
+      {dashboardQuery.isError && !dashboard ? (
+        <ErrorState
+          title="Unable to load HSE aggregates"
+          message={
+            comparisonError
+              ? "The selected project is not available in your site scope. Choose another project or clear the scope filters."
+              : dashboardQuery.error instanceof Error
+                ? dashboardQuery.error.message
+                : "Please try again."
           }
-          hint="Active departments"
+          action={
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => void dashboardQuery.refetch()}
+                isLoading={dashboardQuery.isFetching}
+              >
+                <RefreshIcon size={16} />
+                Try again
+              </Button>
+              {(filters.projectId || filters.siteId) && (
+                <Button variant="secondary" onClick={clearScope}>
+                  Clear scope
+                </Button>
+              )}
+            </div>
+          }
         />
-      </div>
+      ) : dashboardQuery.isLoading || !dashboard ? (
+        <Card>
+          <CardBody>
+            <Spinner label="Loading HSE command centre..." />
+          </CardBody>
+        </Card>
+      ) : (
+        <>
+          {dashboardQuery.isError && (
+            <p
+              role="alert"
+              className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800"
+            >
+              The latest aggregates could not be refreshed. Showing the last
+              loaded figures.
+            </p>
+          )}
 
-      <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-white">
-          Quick actions
-        </h2>
-
-        <div className="mt-4 flex flex-wrap gap-3">
-          <Link
-            href="/employees"
-            className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-800"
-          >
-            Browse employee directory
-          </Link>
-          <Link
-            href="/employees/me"
-            className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-          >
-            Update my contact details
-          </Link>
-          <Link
-            href="/departments"
-            className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-          >
-            View departments
-          </Link>
-        </div>
-
-        {employee && !employee.isActive && (
-          <div className="mt-4">
-            <Badge tone="red">Your employee record is inactive</Badge>
+          <div className="grid gap-5 xl:grid-cols-3">
+            <div className="xl:col-span-2">
+              <ReportingTrend trend={dashboard.incidents.trend} />
+            </div>
+            <OutstandingQueues dashboard={dashboard} />
           </div>
-        )}
-      </div>
+
+          <div className="grid gap-5 xl:grid-cols-3">
+            <div className="xl:col-span-2">
+              <SitePerformance
+                sites={comparisonSites}
+                dashboards={comparisonQueries.map(
+                  (query) => query.data?.data,
+                )}
+                overall={dashboard}
+                totalSites={dashboard.totals.sites}
+                isLoading={
+                  sites.isLoading ||
+                  comparisonQueries.some((query) => query.isPending)
+                }
+                failedSites={
+                  comparisonQueries.filter((query) => query.isError).length
+                }
+                siteFilterActive={Boolean(filters.siteId)}
+              />
+            </div>
+            <StatusPipeline byStatus={dashboard.incidents.byStatus} />
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-2">
+            <CategoryMix
+              categories={dashboard.incidents.byCategory}
+              unclassified={dashboard.incidents.unclassified}
+            />
+            <LatestReports filters={filters} sites={siteList} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

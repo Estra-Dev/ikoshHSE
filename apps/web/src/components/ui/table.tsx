@@ -1,31 +1,25 @@
 import type { ReactNode, TdHTMLAttributes, ThHTMLAttributes } from "react";
 
-export function Table({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function Table({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <table className="w-full text-left text-sm">{children}</table>
+    <div className="overflow-hidden rounded-card border border-line bg-surface shadow-card">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-full text-left text-sm">{children}</table>
+      </div>
     </div>
   );
 }
 
 export function TableHead({ children }: { children: ReactNode }) {
   return (
-    <thead className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
+    <thead className="border-b border-line bg-navy-50/60 text-[11px] uppercase tracking-[0.12em] text-muted">
       {children}
     </thead>
   );
 }
 
 export function TableBody({ children }: { children: ReactNode }) {
-  return (
-    <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-      {children}
-    </tbody>
-  );
+  return <tbody className="divide-y divide-line">{children}</tbody>;
 }
 
 export function TableRow({
@@ -40,8 +34,8 @@ export function TableRow({
       onClick={onClick}
       className={
         onClick
-          ? "cursor-pointer transition hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
-          : undefined
+          ? "cursor-pointer transition hover:bg-navy-50/50"
+          : "transition hover:bg-navy-50/30"
       }
     >
       {children}
@@ -50,7 +44,7 @@ export function TableRow({
 }
 
 export function TH(props: ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th {...props} className="px-4 py-3 font-medium" />;
+  return <th {...props} className="px-4 py-3 font-semibold" />;
 }
 
 export function TD(props: TdHTMLAttributes<HTMLTableCellElement>) {

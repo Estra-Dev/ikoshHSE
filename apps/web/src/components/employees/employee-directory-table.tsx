@@ -40,24 +40,24 @@ export function EmployeeDirectoryTable({
       <TableBody>
         {employees.map((employee) => (
           <TableRow key={employee.id}>
-            <TD className="font-medium text-zinc-900 dark:text-white">
+            <TD className="font-medium text-ink">
               <Link
                 href={`/employees/${employee.id}`}
-                className="text-blue-700 hover:underline dark:text-blue-400"
+                className="text-navy-700 hover:text-navy-900 hover:underline"
               >
                 {formatName(employee)}
               </Link>
             </TD>
-            <TD className="text-zinc-600 dark:text-zinc-400">
+            <TD className="text-muted">
               {employee.jobTitle ?? "—"}
             </TD>
-            <TD className="text-zinc-600 dark:text-zinc-400">
+            <TD className="text-muted">
               {employee.department?.name ?? "—"}
             </TD>
-            <TD className="text-zinc-600 dark:text-zinc-400">
+            <TD className="text-muted">
               {employee.email}
             </TD>
-            <TD className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
+            <TD className="whitespace-nowrap text-muted">
               {employee.phone ?? "—"}
             </TD>
           </TableRow>

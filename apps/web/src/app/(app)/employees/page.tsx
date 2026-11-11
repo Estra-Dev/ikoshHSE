@@ -5,7 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { EmployeeDirectoryTable } from "@/components/employees/employee-directory-table";
 import { EmployeeFilters } from "@/components/employees/employee-filters";
 import { Pagination } from "@/components/ui/pagination";
-import { ErrorState, Spinner } from "@/components/ui/feedback";
+import { EmptyState, ErrorState, Spinner } from "@/components/ui/feedback";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   buildDirectorySearchParams,
   parseDirectorySearchParams,
@@ -89,14 +90,11 @@ function EmployeeDirectory() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-white">
-          Employee Directory
-        </h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Browse active IKOSH employees. Click a name to view their profile.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="People"
+        title="Employee directory"
+        description="Browse active IKOSH employees. Click a name to view their profile."
+      />
 
       <EmployeeFilters
         filters={filters}
@@ -106,27 +104,19 @@ function EmployeeDirectory() {
 
       {directory.isLoading || directory.isFetching ? (
         <div className="space-y-2">
-          <p className="text-right text-xs text-zinc-400">Updating...</p>
+          <p className="text-right text-xs text-muted">Updating…</p>
           <Spinner label="Loading employees..." />
         </div>
       ) : isEmpty ? (
-        <div className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            No employees found
-          </p>
-          <p className="mt-1 text-sm text-zinc-500">
-            The directory is currently empty.
-          </p>
-        </div>
+        <EmptyState
+          title="No employees found"
+          description="The directory is currently empty."
+        />
       ) : employees.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            No employees match your filters
-          </p>
-          <p className="mt-1 text-sm text-zinc-500">
-            Try adjusting the search or clearing the filters.
-          </p>
-        </div>
+        <EmptyState
+          title="No employees match your filters"
+          description="Try adjusting the search or clearing the filters."
+        />
       ) : (
         <EmployeeDirectoryTable employees={employees} />
       )}

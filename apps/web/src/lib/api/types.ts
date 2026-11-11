@@ -105,3 +105,136 @@ export interface DepartmentSummary {
 export interface DepartmentsResponse {
   departments: DepartmentSummary[];
 }
+
+export interface ApiPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+/* -------------------------------------------------------------------------- */
+/* HSE operations                                                             */
+/* -------------------------------------------------------------------------- */
+
+export const INCIDENT_TYPES = ["INCIDENT", "NEAR_MISS"] as const;
+
+export type IncidentType = (typeof INCIDENT_TYPES)[number];
+
+export const INCIDENT_STATUSES = ["REPORTED", "TRIAGED", "CLOSED"] as const;
+
+export type IncidentStatus = (typeof INCIDENT_STATUSES)[number];
+
+/** Site- and role-scoped HSE dashboard aggregates. */
+export interface HseDashboardScope {
+  projectId: string | null;
+  siteId: string | null;
+  from: string | null;
+  to: string | null;
+}
+
+export interface HseDashboardTotals {
+  projects: number;
+  sites: number;
+  contractors: number;
+  contractorPersonnel: number;
+  attachments: number;
+  incidents: number;
+  nearMisses: number;
+}
+
+export interface HseTrendPoint {
+  date: string;
+  count: number;
+}
+
+export interface HseCategoryCount {
+  category: string;
+  count: number;
+}
+
+export interface HseDashboardIncidents {
+  total: number;
+  nearMisses: number;
+  byStatus: Record<IncidentStatus, number>;
+  byCategory: HseCategoryCount[];
+  unclassified: number;
+  trend: HseTrendPoint[];
+}
+
+export interface HseDashboard {
+  scope: HseDashboardScope;
+  totals: HseDashboardTotals;
+  incidents: HseDashboardIncidents;
+  lastUpdated: string;
+}
+
+export interface HseDashboardResponse {
+  success: boolean;
+  data: HseDashboard;
+}
+
+/** Incident serialization exposes related records as identifiers only. */
+export interface IncidentSummary {
+  id: string;
+  site: { id: string };
+  reportedBy: { id: string };
+  type: IncidentType;
+  title: string;
+  description: string;
+  occurredAt: string;
+  location: string | null;
+  immediateActions: string | null;
+  category: string | null;
+  status: IncidentStatus;
+  classifiedBy: { id: string } | null;
+  classifiedAt: string | null;
+  statusUpdatedBy: { id: string } | null;
+  statusUpdatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IncidentsResponse {
+  success: boolean;
+  incidents: IncidentSummary[];
+  pagination: ApiPagination;
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  code: string;
+  description: string;
+  client: string | null;
+  location: string | null;
+  status: string;
+  startDate: string | null;
+  endDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectsResponse {
+  success: boolean;
+  projects: ProjectSummary[];
+  pagination: ApiPagination;
+}
+
+export interface SiteSummary {
+  id: string;
+  project: { id: string };
+  name: string;
+  code: string;
+  location: string | null;
+  description: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SitesResponse {
+  success: boolean;
+  sites: SiteSummary[];
+  pagination: ApiPagination;
+}

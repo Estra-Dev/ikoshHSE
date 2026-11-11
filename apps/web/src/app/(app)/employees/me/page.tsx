@@ -3,8 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button, ErrorState, Spinner } from "@/components/ui/feedback";
+import {
+  Button,
+  buttonStyles,
+  ErrorState,
+  Spinner,
+} from "@/components/ui/feedback";
 import { TextField } from "@/components/ui/fields";
+import { PageHeader } from "@/components/ui/page-header";
+import { ArrowLeftIcon } from "@/components/icons";
 import {
   formatEnum,
   formatProfileDate,
@@ -58,11 +65,11 @@ function ContactForm({ employee }: { employee: EmployeeFull }) {
   }
 
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-white">
+    <section className="rounded-card border border-line bg-surface p-6 shadow-card">
+      <h2 className="text-sm font-semibold text-ink">
         Contact details
       </h2>
-      <p className="mt-1 text-sm text-zinc-500">
+      <p className="mt-1 text-sm leading-6 text-muted">
         Update your own phone number and location. Other profile fields are
         managed by IKOSH administrators.
       </p>
@@ -101,7 +108,7 @@ function ContactForm({ employee }: { employee: EmployeeFull }) {
           )}
 
           {!updateProfile.isError && feedback && (
-            <p className="text-sm text-green-700 dark:text-green-400">
+            <p className="text-sm text-emerald-700">
               {feedback}
             </p>
           )}
@@ -131,39 +138,31 @@ export default function MyProfilePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-white">
-            My Profile
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Your IKOSH employee record as stored in the directory.
-          </p>
-        </div>
+      <PageHeader
+        eyebrow="People"
+        title="My profile"
+        description="Your IKOSH employee record as stored in the directory."
+        actions={
+          <Link href="/employees" className={buttonStyles("secondary", "sm")}>
+            <ArrowLeftIcon size={16} />
+            Back to directory
+          </Link>
+        }
+      />
 
-        <Link
-          href="/employees"
-          className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-        >
-          Back to directory
-        </Link>
-      </div>
-
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <section className="rounded-card border border-line bg-surface p-6 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-lg font-semibold text-zinc-900 dark:text-white">
+            <p className="text-lg font-semibold tracking-tight text-ink">
               {formatName(employee)}
             </p>
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-muted">
               {employee.jobTitle ?? "No job title recorded"}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge tone="violet">{formatEnum(employee.ikoshRole)}</Badge>
-            <Badge
-              tone={employee.isActive ? "green" : "red"}
-            >
+            <Badge tone="navy">{formatEnum(employee.ikoshRole)}</Badge>
+            <Badge tone={employee.isActive ? "green" : "red"} dot>
               {employee.isActive ? "Active" : "Inactive"}
             </Badge>
             <Badge tone={employee.emailVerified ? "green" : "amber"}>

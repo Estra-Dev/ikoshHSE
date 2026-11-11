@@ -24,23 +24,28 @@ export function Pagination({
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-zinc-500">
-        Showing {from}-{to} of {total}
+      <p className="text-sm text-muted">
+        Showing <span className="tabular font-medium text-ink">{from}</span>–
+        <span className="tabular font-medium text-ink">{to}</span> of{" "}
+        <span className="tabular font-medium text-ink">{total}</span>
       </p>
 
       <div className="flex items-center gap-2">
         <Button
           variant="secondary"
+          size="sm"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
         >
           Previous
         </Button>
-        <span className="text-sm text-zinc-600 dark:text-zinc-400">
-          Page {page} of {totalPages}
+        <span className="px-1 text-sm text-muted">
+          Page <span className="tabular font-medium text-ink">{page}</span> of{" "}
+          <span className="tabular font-medium text-ink">{totalPages}</span>
         </span>
         <Button
           variant="secondary"
+          size="sm"
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
         >

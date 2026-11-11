@@ -10,12 +10,10 @@ export function ProfileField({
 }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+      <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
         {label}
       </dt>
-      <dd className="mt-1 break-words text-sm text-zinc-900 dark:text-white">
-        {value}
-      </dd>
+      <dd className="mt-1 break-words text-sm text-ink">{value}</dd>
     </div>
   );
 }
@@ -31,14 +29,12 @@ export function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-white">
-        {title}
-      </h2>
+    <section className="rounded-card border border-line bg-surface p-6 shadow-card">
+      <h2 className="text-sm font-semibold text-ink">{title}</h2>
       {description && (
-        <p className="mt-1 text-sm text-zinc-500">{description}</p>
+        <p className="mt-1 text-sm leading-6 text-muted">{description}</p>
       )}
-      <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <dl className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {children}
       </dl>
     </section>
@@ -63,5 +59,5 @@ export function formatProfileDate(value: string | null): string {
 
 /** Formats an enum-like value ("FULL_TIME") for display. */
 export function formatEnum(value: string | null): string {
-  return value ? value.replace("_", " ") : "—";
+  return value ? value.replaceAll("_", " ") : "—";
 }

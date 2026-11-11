@@ -66,11 +66,11 @@ export function EmploymentInfoForm({ employee }: { employee: EmployeeFull }) {
   }
 
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-white">
+    <section className="rounded-card border border-line bg-surface p-6 shadow-card">
+      <h2 className="text-sm font-semibold text-ink">
         Employment information
       </h2>
-      <p className="mt-1 text-sm text-zinc-500">
+      <p className="mt-1 text-sm leading-6 text-muted">
         Administrator only. Employee IDs must be unique across the directory.
       </p>
 
@@ -179,7 +179,7 @@ export function EmploymentInfoForm({ employee }: { employee: EmployeeFull }) {
           )}
 
           {!updateEmployee.isError && feedback && (
-            <p className="text-sm text-green-700 dark:text-green-400">
+            <p className="text-sm text-emerald-700">
               {feedback}
             </p>
           )}
