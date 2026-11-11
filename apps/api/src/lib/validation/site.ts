@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { objectIdSchema, trimmedNonEmptyString } from "./common.js";
-import { isSiteStatus, type SiteStatus } from "../lib/hse-constants.js";
+import { isSiteStatus, type SiteStatus } from "../hse-constants.js";
 
 const siteCodeSchema = z
   .string()
@@ -14,7 +14,7 @@ export const createSiteSchema = z.object({
   code: siteCodeSchema,
   location: trimmedNonEmptyString(150).optional(),
   description: z.string().trim().max(1000).optional(),
-  status: z.custom<SiteStatus>().optional(),
+  status: z.custom<SiteStatus>(isSiteStatus).optional(),
 });
 
 export type CreateSiteInput = z.infer<typeof createSiteSchema>;
@@ -26,7 +26,7 @@ export const updateSiteSchema = z
     code: siteCodeSchema.optional(),
     location: trimmedNonEmptyString(150).optional(),
     description: z.string().trim().max(1000).optional(),
-    status: z.custom<SiteStatus>().optional(),
+    status: z.custom<SiteStatus>(isSiteStatus).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one field is required.",

@@ -5,16 +5,22 @@ import { HttpError } from "../lib/http-error.js";
 import {
   firstValidationIssue,
   parseObjectIdParam,
+  parsePagination,
 } from "../lib/validation/common.js";
 import {
   createProjectSchema,
   updateProjectSchema,
 } from "../lib/validation/project.js";
-import { attachIkoshUser, getIkoshUser } from "../middleware/attach-ikosh-user.js";
+import {
+  attachIkoshUser,
+  getIkoshUser,
+} from "../middleware/attach-ikosh-user.js";
 import { requireIkoshRole } from "../middleware/require-ikosh-role.js";
 import { isHseManagementRole } from "../lib/ikosh-constants.js";
+import { runAuditedMutation } from "../lib/audit-log.js";
+import { projectAuditSnapshot } from "../lib/audit-snapshots.js";
 import { Project } from "../models/Project.js";
-import { User } from "../models/User.js";
+import { Site } from "../models/Site.js";
 import { toProjectSummary } from "../serializers/project.js";
 
 const router: Router = Router();
@@ -35,20 +41,17 @@ router.use(requireAuth(digitAuth), attachIkoshUser);
 // include inactive projects (where "inactive" means "archived".).
 router.get("/", async (req: Request, res: Response): Promise<void> => {
   const viewer = getIkoshUser(req);
-  const includeInactive = req.query.includeInactive === "true" && isHseManagementRole(viewer.ikoshRole);
+  const includeInactive =
+    req.query.includeInactive === "true" &&
+    isHseManagementRole(viewer.ikoshRole);
 
-  const filter = includeInactive ? {} : { status: "ACTIVE" };
+  const filter = includeInactive ? {} : { status: "ACTIVE" as const };
 
-  const page = Math.max(1, parseInt(req.query.page as string || "1", 10));
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string || "20", 10)));
-  const skip = (page - 1) * limit;
+  const { page, limit, skip } = parsePagination(req.query);
 
   const [total, projects] = await Promise.all([
     Project.countDocuments(filter),
-    Project.find(filter)
-      .sort({ name: 1 })
-      .skip(skip)
-      .limit(limit),
+    Project.find(filter).sort({ name: 1 }).skip(skip).limit(limit).lean(),
   ]);
 
   res.status(200).json({
@@ -67,17 +70,28 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
 router.post(
   "/",
   requireIkoshRole("ADMIN", "HSE_MANAGER"),
-  async (req: Request, res: Response): Promise<void> {
+  async (req: Request, res: Response): Promise<void> => {
     const parsed = createProjectSchema.safeParse(req.body);
     if (!parsed.success) {
       throw new HttpError(400, firstValidationIssue(parsed.error));
     }
 
-    const { name, code, description, client, location, status, startDate, endDate } = parsed.data;
+    const {
+      name,
+      code,
+      description,
+      client,
+      location,
+      status,
+      startDate,
+      endDate,
+    } = parsed.data;
 
     let project;
-    try {
-      project = await Project.create({
+    const viewer = getIkoshUser(req);
+
+    project = await runAuditedMutation(viewer._id, async (session) => {
+      const created = new Project({
         name,
         code,
         description: description ?? "",
@@ -87,12 +101,29 @@ router.post(
         startDate,
         endDate,
       });
-    } catch (error) {
-      if (isDuplicateKeyError(error)) {
-        throw new HttpError(409, "A project with this name or code already exists.");
+
+      try {
+        await created.save({ session });
+      } catch (error) {
+        if (isDuplicateKeyError(error)) {
+          throw new HttpError(
+            409,
+            "A project with this name or code already exists.",
+          );
+        }
+        throw error;
       }
-      throw error;
-    }
+
+      return {
+        result: created,
+        audit: {
+          action: "project.created",
+          entityType: "Project",
+          entityId: created._id,
+          after: projectAuditSnapshot(created),
+        },
+      };
+    });
 
     res.status(201).json({
       success: true,
@@ -105,7 +136,7 @@ router.post(
 router.patch(
   "/:id",
   requireIkoshRole("ADMIN", "HSE_MANAGER"),
-  async (req: Request, res: Response): Promise<void> {
+  async (req: Request, res: Response): Promise<void> => {
     const projectId = parseObjectIdParam(req.params.id, "project");
 
     const parsed = updateProjectSchema.safeParse(req.body);
@@ -113,30 +144,60 @@ router.patch(
       throw new HttpError(400, firstValidationIssue(parsed.error));
     }
 
-    const project = await Project.findById(projectId);
-    if (!project) {
-      throw new HttpError(404, "Project not found.");
-    }
+    const {
+      name,
+      code,
+      description,
+      client,
+      location,
+      status,
+      startDate,
+      endDate,
+    } = parsed.data;
 
-    const { name, code, description, client, location, status, startDate, endDate } = parsed.data;
+    const project = await runAuditedMutation(
+      getIkoshUser(req)._id,
+      async (session) => {
+        const project = await Project.findById(projectId).session(session);
+        if (!project) {
+          throw new HttpError(404, "Project not found.");
+        }
 
-    if (name !== undefined) project.name = name;
-    if (code !== undefined) project.code = code;
-    if (description !== undefined) project.description = description ?? "";
-    if (client !== undefined) project.client = client;
-    if (location !== undefined) project.location = location;
-    if (status !== undefined) project.status = status;
-    if (startDate !== undefined) project.startDate = startDate;
-    if (endDate !== undefined) project.endDate = endDate;
+        const before = projectAuditSnapshot(project);
 
-    try {
-      await project.save();
-    } catch (error) {
-      if (isDuplicateKeyError(error)) {
-        throw new HttpError(409, "A project with this name or code already exists.");
-      }
-      throw error;
-    }
+        if (name !== undefined) project.name = name;
+        if (code !== undefined) project.code = code;
+        if (description !== undefined) project.description = description ?? "";
+        if (client !== undefined) project.client = client;
+        if (location !== undefined) project.location = location;
+        if (status !== undefined) project.status = status;
+        if (startDate !== undefined) project.startDate = startDate;
+        if (endDate !== undefined) project.endDate = endDate;
+
+        try {
+          await project.save({ session });
+        } catch (error) {
+          if (isDuplicateKeyError(error)) {
+            throw new HttpError(
+              409,
+              "A project with this name or code already exists.",
+            );
+          }
+          throw error;
+        }
+
+        return {
+          result: project,
+          audit: {
+            action: "project.updated",
+            entityType: "Project",
+            entityId: project._id,
+            before,
+            after: projectAuditSnapshot(project),
+          },
+        };
+      },
+    );
 
     res.status(200).json({
       success: true,
@@ -149,20 +210,37 @@ router.patch(
 router.delete(
   "/:id",
   requireIkoshRole("ADMIN", "HSE_MANAGER"),
-  async (req: Request, res: Response): Promise<void> {
+  async (req: Request, res: Response): Promise<void> => {
     const projectId = parseObjectIdParam(req.params.id, "project");
 
-    const project = await Project.findById(projectId);
-    if (!project) {
-      throw new HttpError(404, "Project not found.");
-    }
+    await runAuditedMutation(getIkoshUser(req)._id, async (session) => {
+      const project = await Project.findById(projectId).session(session);
+      if (!project) {
+        throw new HttpError(404, "Project not found.");
+      }
 
-    const sitesCount = await require("./src/models/Site.js").default?.countDocuments?.({ project: projectId }) ?? 0;
-    if (sitesCount > 0) {
-      throw new HttpError(409, `Project still has ${sitesCount} site${sitesCount === 1 ? "" : "s"}. Delete or archive them first.`);
-    }
+      const sitesCount = await Site.countDocuments({
+        project: projectId,
+      }).session(session);
+      if (sitesCount > 0) {
+        throw new HttpError(
+          409,
+          `Project still has ${sitesCount} site${sitesCount === 1 ? "" : "s"}. Delete or archive them first.`,
+        );
+      }
 
-    await Project.deleteOne({ _id: projectId });
+      await Project.deleteOne({ _id: projectId }, { session });
+
+      return {
+        result: project,
+        audit: {
+          action: "project.deleted",
+          entityType: "Project",
+          entityId: project._id,
+          before: projectAuditSnapshot(project),
+        },
+      };
+    });
 
     res.status(200).json({
       success: true,

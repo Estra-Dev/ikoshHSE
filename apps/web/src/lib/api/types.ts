@@ -26,6 +26,7 @@ export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 export const MANAGEMENT_ROLES: readonly IkoshRole[] = [
   "SUPERVISOR",
   "HSE_OFFICER",
+  "HSE_MANAGER",
   "ADMIN",
 ];
 
@@ -65,6 +66,8 @@ export interface EmployeeFull extends EmployeeBasic {
   ikoshRole: IkoshRole;
   isActive: boolean;
   emailVerified: boolean;
+  /** Sites the employee is assigned to (site-level access control). */
+  assignedSites: string[];
   createdAt: string;
   updatedAt: string;
 }

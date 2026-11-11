@@ -1,6 +1,16 @@
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import os from "node:os";
+import path from "node:path";
 import { afterAll, afterEach, beforeAll, vi } from "vitest";
+
+/**
+ * Private attachment storage is isolated per test worker so files never touch
+ * the repository working tree.
+ */
+process.env.ATTACHMENT_STORAGE_DIR ??= path.join(
+  os.tmpdir(),
+  `ikosh-hse-test-attachments-${process.pid}`,
+);
 
 /**
  * Placeholder DigitAuth configuration. `src/lib/digit-auth.ts` validates these
@@ -44,23 +54,31 @@ vi.mock("@digit-auth/node", async (importOriginal) => {
   };
 });
 
-let mongoServer: MongoMemoryServer | null = null;
-
 beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create();
-  process.env.MONGODB_URI = mongoServer.getUri("ikoshHSE-test");
+  if (!process.env.MONGODB_URI) {
+    throw new Error("MONGODB_URI was not initialized by global setup.");
+  }
+
   await mongoose.connect(process.env.MONGODB_URI);
   await mongoose.syncIndexes();
 });
 
 afterEach(async () => {
   if (mongoose.connection.readyState === 1) {
-    const collections = await mongoose.connection.db.collections();
-    await Promise.all(collections.map((collection) => collection.deleteMany({})));
+    const db = mongoose.connection.db;
+
+    if (!db) {
+      throw new Error("MongoDB connection is not available.");
+    }
+
+    const collections = await db.collections();
+
+    await Promise.all(
+      collections.map((collection) => collection.deleteMany({})),
+    );
   }
 });
 
 afterAll(async () => {
   await mongoose.disconnect();
-  await mongoServer?.stop();
 });

@@ -1,7 +1,17 @@
-import type { AttachmentDocument } from "../models/Attachment.js";
-
+export interface AttachmentLike {
+  _id: unknown;
+  originalFilename: string;
+  mimeType: string;
+  size: number;
+  checksum: string;
+  entityType?: string | null;
+  entityId?: unknown;
+  description?: string | null;
+  uploadedBy: unknown;
+  createdAt: Date;
+}
 /** Minimal document shape required to serialize an attachment. */
-export type AttachmentLike = AttachmentDocument & { _id: unknown };
+// export type AttachmentLike = AttachmentDocument & { _id: unknown };
 
 export interface SerializedAttachment {
   id: string;

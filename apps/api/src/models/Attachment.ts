@@ -7,9 +7,9 @@ import mongoose, { Schema, type InferSchemaType } from "mongoose";
  * storage key, so client-supplied filenames can never influence the on-disk
  * path.
  *
- * `entityType`/`entityId` will link attachments to HSE records (incident
- * evidence, action items) starting in Phase 2; they stay null until an
- * entity actually claims the file.
+ * `entityType`/`entityId` link attachments to HSE records (site or incident
+ * evidence, and later action items); they stay null until an entity actually
+ * claims the file.
  */
 const attachmentSchema = new Schema(
   {
@@ -67,7 +67,7 @@ const attachmentSchema = new Schema(
   },
 );
 
-// Lookup of attachments linked to a given HSE record (Phase 2).
+// Lookup of attachments linked to a given HSE record (site or incident).
 attachmentSchema.index({ entityType: 1, entityId: 1 });
 
 export type AttachmentDocument = InferSchemaType<typeof attachmentSchema>;

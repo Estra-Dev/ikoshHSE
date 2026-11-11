@@ -1,7 +1,17 @@
-import type { ContractorPersonnelDocument } from "../models/ContractorPersonnel.js";
-
-/** Minimal document shape required to serialize a contractor personnel. */
-export type ContractorPersonnelLike = ContractorPersonnelDocument & { _id: unknown };
+export interface ContractorPersonnelLike {
+  _id: unknown;
+  contractor: unknown;
+  firstName: string;
+  lastName: string;
+  personnelId?: string | null;
+  jobTitle?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  site?: unknown | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export interface SerializedContractorPersonnel {
   id: string;

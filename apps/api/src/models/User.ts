@@ -108,6 +108,9 @@ const userSchema = new Schema(
 // Compound index backing the employee directory's default filters.
 userSchema.index({ department: 1, isActive: 1, lastName: 1 });
 
+// Default employee directory listing: active employees sorted by name.
+userSchema.index({ isActive: 1, lastName: 1, firstName: 1 });
+
 // Reverse lookup: who is assigned to a given site.
 userSchema.index({ assignedSites: 1 });
 

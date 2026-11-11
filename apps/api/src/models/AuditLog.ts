@@ -51,6 +51,8 @@ const auditLogSchema = new Schema(
 
 auditLogSchema.index({ entityType: 1, entityId: 1, createdAt: -1 });
 auditLogSchema.index({ actor: 1, createdAt: -1 });
+// Supports the audit-log endpoint's optional action filter.
+auditLogSchema.index({ action: 1, createdAt: -1 });
 
 export type AuditLogDocument = InferSchemaType<typeof auditLogSchema>;
 

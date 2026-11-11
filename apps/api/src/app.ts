@@ -10,12 +10,31 @@ import { HttpError } from "./lib/http-error.js";
 import digitAuthWebhookRouter from "./routes/webhooks/digit-auth.js";
 import departmentsRouter from "./routes/departments.js";
 import employeesRouter from "./routes/employees.js";
+import projectsRouter from "./routes/projects.js";
+import sitesRouter from "./routes/sites.js";
+import contractorsRouter from "./routes/contractors.js";
+import contractorPersonnelRouter from "./routes/contractor-personnel.js";
+import attachmentsRouter from "./routes/attachments.js";
+import incidentsRouter from "./routes/incidents.js";
+import hseReferenceRouter from "./routes/hse-reference.js";
 
 export const app: express.Express = express();
 
+// Browser clients may only call the API from the configured web origin.
+const webOrigin = process.env.WEB_ORIGIN?.trim() || "http://localhost:3000";
+
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin(origin, callback) {
+      // Same-origin/non-browser requests have no Origin header. Only the
+      // configured web origin is granted cross-origin access.
+      if (!origin || origin === webOrigin) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, false);
+    },
   }),
 );
 
@@ -71,6 +90,18 @@ app.use("/api/departments", departmentsRouter);
 // Employee directory and profiles.
 app.use("/api/employees", employeesRouter);
 
+// HSE operational records. Each router applies authentication and IKOSH
+// authorization internally.
+app.use("/api/projects", projectsRouter);
+app.use("/api/sites", sitesRouter);
+app.use("/api/contractors", contractorsRouter);
+app.use("/api/contractor-personnel", contractorPersonnelRouter);
+app.use("/api/attachments", attachmentsRouter);
+app.use("/api/incidents", incidentsRouter);
+
+// HSE reference data, dashboard and audit log.
+app.use("/api/hse", hseReferenceRouter);
+
 // Centralized error handler: never expose internal stack traces to clients.
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error("API request error:", error);
@@ -91,8 +122,6 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     typeof error.status === "number"
       ? error.status
       : 500;
-
-  console.error("API request error:", error);
 
   const message =
     status === 401

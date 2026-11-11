@@ -21,6 +21,7 @@ export interface CreateIkoshUserOptions {
   employmentType?: string;
   hireDate?: Date;
   managerId?: Types.ObjectId;
+  assignedSites?: Types.ObjectId[];
 }
 
 /**
@@ -50,6 +51,9 @@ export async function createIkoshUser(
       : {}),
     ...(options.hireDate !== undefined ? { hireDate: options.hireDate } : {}),
     ...(options.managerId !== undefined ? { managerId: options.managerId } : {}),
+    ...(options.assignedSites !== undefined
+      ? { assignedSites: options.assignedSites }
+      : {}),
   });
 }
 

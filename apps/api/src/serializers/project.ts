@@ -1,7 +1,16 @@
-import type { ProjectDocument } from "../models/Project.js";
-
-/** Minimal document shape required to serialize a project. */
-export type ProjectLike = ProjectDocument & { _id: unknown };
+export interface ProjectLike {
+  _id: unknown;
+  name: string;
+  code: string;
+  description: string;
+  client?: string | null;
+  location?: string | null;
+  status: string;
+  startDate?: Date | null;
+  endDate?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export interface SerializedProject {
   id: string;

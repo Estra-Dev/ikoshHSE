@@ -17,14 +17,16 @@ import {
   updateEmployeeStatusSchema,
   updateOwnProfileSchema,
 } from "../lib/validation/employee.js";
-import { attachIkoshUser, getIkoshUser } from "../middleware/attach-ikosh-user.js";
+import {
+  attachIkoshUser,
+  getIkoshUser,
+} from "../middleware/attach-ikosh-user.js";
 import { requireIkoshRole } from "../middleware/require-ikosh-role.js";
+import { runAuditedMutation } from "../lib/audit-log.js";
+import { employeeAuditSnapshot } from "../lib/audit-snapshots.js";
 import { Department } from "../models/Department.js";
 import { User } from "../models/User.js";
-import {
-  toBasicUserProfile,
-  toFullUserProfile,
-} from "../serializers/user.js";
+import { toBasicUserProfile, toFullUserProfile } from "../serializers/user.js";
 
 const router: Router = Router();
 
@@ -106,6 +108,7 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
   const [total, employees] = await Promise.all([
     User.countDocuments(filter),
     User.find(filter)
+      .lean()
       .sort(DIRECTORY_SORTS[query.sort ?? "name"])
       .skip((query.page - 1) * query.limit)
       .limit(query.limit)
@@ -214,12 +217,6 @@ router.patch(
       throw new HttpError(400, firstValidationIssue(parsed.error));
     }
 
-    const employee = await User.findById(employeeId);
-
-    if (!employee) {
-      throw new HttpError(404, "Employee not found.");
-    }
-
     const {
       employeeId: newEmployeeId,
       jobTitle,
@@ -230,80 +227,107 @@ router.patch(
       phone,
       location,
     } = parsed.data;
+    const viewer = getIkoshUser(req);
 
-    if (department !== undefined) {
-      if (department) {
-        const departmentExists = await Department.exists({
-          _id: department,
-        });
+    const employee = await runAuditedMutation(
+      viewer._id,
+      async (session) => {
+        const employee = await User.findById(employeeId).session(session);
 
-        if (!departmentExists) {
-          throw new HttpError(400, "Specified department was not found.");
+        if (!employee) {
+          throw new HttpError(404, "Employee not found.");
         }
 
-        employee.department = new Types.ObjectId(department);
-      } else {
-        employee.department = null;
-      }
-    }
+        const before = employeeAuditSnapshot(employee);
 
-    if (managerId !== undefined) {
-      if (managerId) {
-        if (String(managerId) === String(employee._id)) {
-          throw new HttpError(
-            400,
-            "An employee cannot be their own manager.",
-          );
+        if (department !== undefined) {
+          if (department) {
+            const departmentExists = await Department.exists({
+              _id: department,
+            }).session(session);
+
+            if (!departmentExists) {
+              throw new HttpError(400, "Specified department was not found.");
+            }
+
+            employee.department = new Types.ObjectId(department);
+          } else {
+            employee.department = null;
+          }
         }
 
-        const managerExists = await User.exists({ _id: managerId });
+        if (managerId !== undefined) {
+          if (managerId) {
+            if (String(managerId) === String(employee._id)) {
+              throw new HttpError(
+                400,
+                "An employee cannot be their own manager.",
+              );
+            }
 
-        if (!managerExists) {
-          throw new HttpError(400, "Specified manager was not found.");
+            const managerExists = await User.exists({
+              _id: managerId,
+            }).session(session);
+
+            if (!managerExists) {
+              throw new HttpError(400, "Specified manager was not found.");
+            }
+
+            employee.managerId = new Types.ObjectId(managerId);
+          } else {
+            employee.managerId = null;
+          }
         }
 
-        employee.managerId = new Types.ObjectId(managerId);
-      } else {
-        employee.managerId = null;
-      }
-    }
+        if (newEmployeeId !== undefined) {
+          employee.employeeId = newEmployeeId;
+        }
 
-    if (newEmployeeId !== undefined) {
-      employee.employeeId = newEmployeeId;
-    }
+        if (jobTitle !== undefined) {
+          employee.jobTitle = jobTitle;
+        }
 
-    if (jobTitle !== undefined) {
-      employee.jobTitle = jobTitle;
-    }
+        if (employmentType !== undefined) {
+          employee.employmentType = employmentType;
+        }
 
-    if (employmentType !== undefined) {
-      employee.employmentType = employmentType;
-    }
+        if (hireDate !== undefined) {
+          employee.hireDate = hireDate;
+        }
 
-    if (hireDate !== undefined) {
-      employee.hireDate = hireDate;
-    }
+        if (phone !== undefined) {
+          employee.phone = phone;
+        }
 
-    if (phone !== undefined) {
-      employee.phone = phone;
-    }
+        if (location !== undefined) {
+          employee.location = location;
+        }
 
-    if (location !== undefined) {
-      employee.location = location;
-    }
+        try {
+          await employee.save({ session });
+        } catch (error) {
+          if (isDuplicateKeyError(error)) {
+            throw new HttpError(
+              409,
+              "This employee ID is already assigned to another employee.",
+            );
+          }
 
-    try {
-      await employee.save();
-    } catch (error) {
-      if (isDuplicateKeyError(error)) {
-        throw new HttpError(
-          409,
-          "This employee ID is already assigned to another employee.",
-        );
-      }
+          throw error;
+        }
 
-      throw error;
-    }
+        return {
+          result: employee,
+          audit: {
+            action: "employee.updated",
+            entityType: "User",
+            entityId: employee._id,
+            before,
+            after: employeeAuditSnapshot(employee),
+          },
+        };
+      },
+    );
 
     await employee.populate(POPULATE_EMPLOYEE_FIELDS);
 
@@ -333,24 +357,42 @@ router.patch(
       throw new HttpError(403, "You cannot change your own IKOSH role.");
     }
 
-    const employee = await User.findById(employeeId);
+    const employee = await runAuditedMutation(
+      viewer._id,
+      async (session) => {
+        const employee = await User.findById(employeeId).session(session);
 
-    if (!employee) {
-      throw new HttpError(404, "Employee not found.");
-    }
+        if (!employee) {
+          throw new HttpError(404, "Employee not found.");
+        }
 
-    employee.ikoshRole = parsed.data.ikoshRole;
+        const before = employeeAuditSnapshot(employee);
 
-    try {
-      await employee.save();
-    } catch (error) {
-      if (isDuplicateKeyError(error)) {
-        // Not expected: roles are not unique. Fail generically.
-        throw new HttpError(409, "Request could not be processed.");
-      }
+        employee.ikoshRole = parsed.data.ikoshRole;
 
-      throw error;
-    }
+        try {
+          await employee.save({ session });
+        } catch (error) {
+          if (isDuplicateKeyError(error)) {
+            // Not expected: roles are not unique. Fail generically.
+            throw new HttpError(409, "Request could not be processed.");
+          }
+
+          throw error;
+        }
+
+        return {
+          result: employee,
+          audit: {
+            action: "employee.role_changed",
+            entityType: "User",
+            entityId: employee._id,
+            before,
+            after: employeeAuditSnapshot(employee),
+          },
+        };
+      },
+    );
 
     await employee.populate(POPULATE_EMPLOYEE_FIELDS);
 
@@ -389,14 +431,33 @@ router.patch(
       );
     }
 
-    const employee = await User.findById(employeeId);
+    const employee = await runAuditedMutation(
+      viewer._id,
+      async (session) => {
+        const employee = await User.findById(employeeId).session(session);
 
-    if (!employee) {
-      throw new HttpError(404, "Employee not found.");
-    }
+        if (!employee) {
+          throw new HttpError(404, "Employee not found.");
+        }
 
-    employee.isActive = parsed.data.isActive;
-    await employee.save();
+        const before = employeeAuditSnapshot(employee);
+
+        employee.isActive = parsed.data.isActive;
+        await employee.save({ session });
+
+        return {
+          result: employee,
+          audit: {
+            action: "employee.status_changed",
+            entityType: "User",
+            entityId: employee._id,
+            before,
+            after: employeeAuditSnapshot(employee),
+          },
+        };
+      },
+    );
+
     await employee.populate(POPULATE_EMPLOYEE_FIELDS);
 
     res.status(200).json({

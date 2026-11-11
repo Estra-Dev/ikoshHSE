@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { objectIdSchema, trimmedNonEmptyString } from "./common.js";
-import { isProjectStatus, type ProjectStatus } from "../lib/hse-constants.js";
+import { trimmedNonEmptyString } from "./common.js";
+import { isProjectStatus, type ProjectStatus } from "../hse-constants.js";
 
 const projectCodeSchema = z
   .string()
@@ -14,7 +14,7 @@ export const createProjectSchema = z.object({
   description: z.string().trim().max(1000).optional(),
   client: trimmedNonEmptyString(100).optional(),
   location: trimmedNonEmptyString(150).optional(),
-  status: z.custom<ProjectStatus>().optional(),
+  status: z.custom<ProjectStatus>(isProjectStatus).optional(),
   startDate: z.coerce.date().nullable().optional(),
   endDate: z.coerce.date().nullable().optional(),
 });
@@ -28,7 +28,7 @@ export const updateProjectSchema = z
     description: z.string().trim().max(1000).optional(),
     client: trimmedNonEmptyString(100).optional(),
     location: trimmedNonEmptyString(150).optional(),
-    status: z.custom<ProjectStatus>().optional(),
+    status: z.custom<ProjectStatus>(isProjectStatus).optional(),
     startDate: z.coerce.date().nullable().optional(),
     endDate: z.coerce.date().nullable().optional(),
   })

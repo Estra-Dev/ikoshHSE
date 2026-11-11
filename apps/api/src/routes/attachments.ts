@@ -1,52 +1,189 @@
 import { Router, type Request, type Response } from "express";
 import { requireAuth } from "@digit-auth/node";
+import multer from "multer";
+import { Types, type ClientSession } from "mongoose";
 import { digitAuth } from "../lib/digit-auth.js";
 import { HttpError } from "../lib/http-error.js";
 import {
   firstValidationIssue,
   parseObjectIdParam,
+  parsePagination,
 } from "../lib/validation/common.js";
 import {
-  createAttachmentSchema,
+  attachmentSizeLimit,
+  attachmentUploadFieldsSchema,
   updateAttachmentSchema,
 } from "../lib/validation/attachment.js";
-import { attachIkoshUser, getIkoshUser } from "../middleware/attach-ikosh-user.js";
+import {
+  attachIkoshUser,
+  getIkoshUser,
+} from "../middleware/attach-ikosh-user.js";
 import { requireIkoshRole } from "../middleware/require-ikosh-role.js";
 import { isHseManagementRole } from "../lib/ikosh-constants.js";
+import {
+  isSiteAssigned,
+  assertSiteAccess,
+  type SiteScopedViewer,
+} from "../lib/site-access.js";
+import { runAuditedMutation } from "../lib/audit-log.js";
+import { attachmentAuditSnapshot } from "../lib/audit-snapshots.js";
+import {
+  assertAttachmentContent,
+} from "../lib/attachments/file-signature.js";
+import {
+  deleteAttachmentBytes,
+  readAttachmentBytes,
+  sanitizeOriginalFilename,
+  saveAttachmentBytes,
+  sha256Hex,
+} from "../lib/attachments/storage.js";
 import { Attachment } from "../models/Attachment.js";
-import { User } from "../models/User.js";
+import { Incident } from "../models/Incident.js";
+import { Site } from "../models/Site.js";
 import { toAttachmentSummary } from "../serializers/attachment.js";
 
 const router: Router = Router();
 
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: attachmentSizeLimit, files: 1 },
+});
+
+/** Runs multer and maps upload limit errors onto safe HTTP responses. */
+function acceptSingleFile(
+  req: Request,
+  res: Response,
+  next: (error?: unknown) => void,
+): void {
+  upload.single("file")(req, res, (error: unknown) => {
+    if (error instanceof multer.MulterError) {
+      if (error.code === "LIMIT_FILE_SIZE") {
+        next(
+          new HttpError(
+            413,
+            `File exceeds the ${attachmentSizeLimit / (1024 * 1024)} MB limit.`,
+          ),
+        );
+        return;
+      }
+
+      next(new HttpError(400, "Invalid file upload."));
+      return;
+    }
+
+    if (error) {
+      next(error);
+      return;
+    }
+
+    next();
+  });
+}
+
 // All attachment routes require authenticated, active IKOSH employee.
 router.use(requireAuth(digitAuth), attachIkoshUser);
 
-// List attachments with pagination and filters. Only HSE_MANAGER + ADMIN can
-// view attachments linked to entities (otherwise only those uploaded by self).
-router.get("/", async (_req: Request, res: Response): Promise<void> => {
-  const viewer = getIkoshUser(_req);
-  const entityFilter = _req.query.entityType && _req.query.entityId ? {
-    entityType: _req.query.entityType,
-    entityId: _req.query.entityId,
-  } : {};
+/**
+ * Confirms that the linked entity exists and the viewer may attach to it.
+ * Site-bound records are checked through the shared site-access rules.
+ */
+async function assertAttachmentEntityAccess(
+  session: ClientSession,
+  viewer: SiteScopedViewer,
+  entityType: string | null,
+  entityId: unknown,
+): Promise<void> {
+  if (!entityType || !entityId) {
+    return;
+  }
 
-  const filter = {
-    ...entityFilter,
-    ...(isHseManagementRole(viewer.ikoshRole) ? {} : { uploadedBy: viewer._id }),
+  if (entityType === "site") {
+    const site = await Site.findById(entityId).session(session);
+
+    if (!site) {
+      throw new HttpError(404, "Specified site was not found.");
+    }
+
+    assertSiteAccess(viewer, entityId);
+    return;
+  }
+
+  if (entityType === "incident") {
+    const incident = await Incident.findById(entityId).session(session);
+
+    if (!incident) {
+      throw new HttpError(404, "Specified incident was not found.");
+    }
+
+    assertSiteAccess(viewer, incident.site);
+    return;
+  }
+
+  throw new HttpError(400, "Unsupported attachment entity type.");
+}
+
+async function buildVisibleAttachmentFilter(
+  viewer: SiteScopedViewer & { _id: unknown },
+): Promise<Record<string, unknown>> {
+  if (isHseManagementRole(viewer.ikoshRole)) {
+    return {};
+  }
+
+  const assignedSites = (viewer.assignedSites ?? []).map(
+    (siteId) => new Types.ObjectId(String(siteId)),
+  );
+  const incidentIds =
+    assignedSites.length > 0
+      ? await Incident.distinct("_id", { site: { $in: assignedSites } })
+      : [];
+
+  return {
+    $or: [
+      { uploadedBy: viewer._id },
+      { entityType: "site", entityId: { $in: assignedSites } },
+      {
+        entityType: "incident",
+        entityId: { $in: incidentIds },
+      },
+    ],
   };
+}
 
-  const page = Math.max(1, parseInt(_req.query.page as string || "1", 10));
-  const limit = Math.min(100, Math.max(1, parseInt(_req.query.limit as string || "20", 10)));
-  const skip = (page - 1) * limit;
+// List attachments. HSE management sees everything; everyone else sees their
+// own uploads plus files linked to their assigned sites/incidents.
+router.get("/", async (req: Request, res: Response): Promise<void> => {
+  const viewer = getIkoshUser(req);
+  const entityType =
+    typeof req.query.entityType === "string"
+      ? req.query.entityType
+      : undefined;
+  const entityId =
+    typeof req.query.entityId === "string" ? req.query.entityId : undefined;
+
+  if (entityId && !Types.ObjectId.isValid(entityId)) {
+    throw new HttpError(400, "Invalid entity ID.");
+  }
+
+  const entityFilter =
+    entityType && entityId
+      ? { entityType, entityId: new Types.ObjectId(entityId) }
+      : {};
+
+  const accessFilter = await buildVisibleAttachmentFilter(viewer);
+  const filter =
+    Object.keys(entityFilter).length > 0
+      ? { $and: [entityFilter, accessFilter] }
+      : accessFilter;
+
+  const { page, limit, skip } = parsePagination(req.query);
 
   const [total, attachments] = await Promise.all([
     Attachment.countDocuments(filter),
     Attachment.find(filter)
-      .populate("uploadedBy", "firstName lastName")
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
   ]);
 
   res.status(200).json({
@@ -61,58 +198,94 @@ router.get("/", async (_req: Request, res: Response): Promise<void> => {
   });
 });
 
-// Upload a file: client first POST to `/api/hse/attachments/upload/url`
-// to get a signed upload URL; then PUT multipart/form-data to that URL.
-// This endpoint records the metadata after the file bytes have been stored.
-router.post(
-  "/",
-  requireIkoshRole("ADMIN", "HSE_MANAGER"),
-  async (_req: Request, res: Response): Promise<void> => {
-    // In MVP: we mock the storage and immediately generate metadata.
-    // In Phase 2: integrate with cloud storage and verify checksum.
-    const parsed = createAttachmentSchema.safeParse(_req.body);
-    if (!parsed.success) {
-      throw new HttpError(400, firstValidationIssue(parsed.error));
-    }
+// Upload a file. The server validates the actual bytes, calculates the
+// checksum and writes the file under an opaque storage key. If the database
+// write fails, the stored file is removed so no orphan is left behind.
+router.post("/", acceptSingleFile, async (req: Request, res: Response) => {
+  const viewer = getIkoshUser(req);
+  const parsed = attachmentUploadFieldsSchema.safeParse(req.body);
 
-    const viewer = getIkoshUser(_req);
-    const { originalFilename, mimeType, size, checksum, entityType, entityId, description } = parsed.data;
+  if (!parsed.success) {
+    throw new HttpError(400, firstValidationIssue(parsed.error));
+  }
 
-    // Validate checksum format (SHA-256 hex).
-    if (!/^[0-9a-f]{64}$/i.test(checksum)) {
-      throw new HttpError(400, "Invalid checksum format. Expected SHA-256 hex (64 characters).");
-    }
+  const file = req.file;
 
-    // Verify entity exists if being linked.
-    if (entityType && entityId) {
-      // Currently we only support linking to HSE records in later phases;
-      // for now we just accept any entity type but log it.
-    }
+  if (!file || file.size === 0) {
+    throw new HttpError(400, "A file is required.");
+  }
 
-    const attachment = await Attachment.create({
-      storageKey: `attach_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
+  if (file.size > attachmentSizeLimit) {
+    throw new HttpError(
+      413,
+      `File exceeds the ${attachmentSizeLimit / (1024 * 1024)} MB limit.`,
+    );
+  }
+
+  assertAttachmentContent(file.buffer, file.mimetype);
+
+  const checksum = sha256Hex(file.buffer);
+
+  if (parsed.data.checksum && parsed.data.checksum !== checksum) {
+    throw new HttpError(
+      400,
+      "Checksum does not match the uploaded file content.",
+    );
+  }
+
+  const originalFilename = sanitizeOriginalFilename(file.originalname);
+  const storageKey = await saveAttachmentBytes(file.buffer);
+
+  const attachment = await runAuditedMutation(viewer._id, async (session) => {
+    await assertAttachmentEntityAccess(
+      session,
+      viewer,
+      parsed.data.entityType ?? null,
+      parsed.data.entityId ?? null,
+    );
+
+    const created = new Attachment({
+      storageKey,
       originalFilename,
-      mimeType,
-      size,
+      mimeType: file.mimetype,
+      size: file.size,
       checksum,
-      entityType,
-      entityId,
-      description: description ?? "",
+      entityType: parsed.data.entityType ?? null,
+      entityId: parsed.data.entityId
+        ? new Types.ObjectId(parsed.data.entityId)
+        : null,
+      description: parsed.data.description ?? "",
       uploadedBy: viewer._id,
     });
 
-    res.status(201).json({
-      success: true,
-      attachment: toAttachmentSummary(attachment),
-    });
-  },
-);
+    await created.save({ session });
+
+    return {
+      result: created,
+      audit: {
+        action: "attachment.created",
+        entityType: "Attachment",
+        entityId: created._id,
+        after: attachmentAuditSnapshot(created),
+      },
+    };
+  }).catch(async (error: unknown) => {
+    await deleteAttachmentBytes(storageKey).catch(() => undefined);
+    throw error;
+  });
+
+  res.status(201).json({
+    success: true,
+    attachment: toAttachmentSummary(attachment),
+  });
+});
 
 // Update attachment metadata (HSE_MANAGER + ADMIN only).
 router.patch(
   "/:id",
   requireIkoshRole("ADMIN", "HSE_MANAGER"),
-  async (req: Request, res: Response): Promise<void> {
+  async (req: Request, res: Response): Promise<void> => {
+    const viewer = getIkoshUser(req);
     const attachmentId = parseObjectIdParam(req.params.id, "attachment");
 
     const parsed = updateAttachmentSchema.safeParse(req.body);
@@ -120,18 +293,50 @@ router.patch(
       throw new HttpError(400, firstValidationIssue(parsed.error));
     }
 
-    const attachment = await Attachment.findById(attachmentId);
-    if (!attachment) {
-      throw new HttpError(404, "Attachment not found.");
-    }
+    const attachment = await runAuditedMutation(
+      viewer._id,
+      async (session) => {
+        const attachment = await Attachment.findById(attachmentId).session(
+          session,
+        );
 
-    const { entityType, entityId, description } = parsed.data;
+        if (!attachment) {
+          throw new HttpError(404, "Attachment not found.");
+        }
 
-    if (entityType !== undefined) attachment.entityType = entityType;
-    if (entityId !== undefined) attachment.entityId = entityId;
-    if (description !== undefined) attachment.description = description;
+        const before = attachmentAuditSnapshot(attachment);
+        const { entityType, entityId, description } = parsed.data;
 
-    await attachment.save();
+        if (entityType !== undefined && entityId !== undefined) {
+          await assertAttachmentEntityAccess(
+            session,
+            viewer,
+            entityType,
+            entityId,
+          );
+
+          attachment.entityType = entityType;
+          attachment.entityId = new Types.ObjectId(entityId);
+        }
+
+        if (description !== undefined) {
+          attachment.description = description;
+        }
+
+        await attachment.save({ session });
+
+        return {
+          result: attachment,
+          audit: {
+            action: "attachment.updated",
+            entityType: "Attachment",
+            entityId: attachment._id,
+            before,
+            after: attachmentAuditSnapshot(attachment),
+          },
+        };
+      },
+    );
 
     res.status(200).json({
       success: true,
@@ -140,38 +345,64 @@ router.patch(
   },
 );
 
-// Download an attachment (authorization-checked).
-// The actual file bytes are served by a storage service; this endpoint
-// validates permissions and returns a signed URL or streams the file locally.
+// Stream an attachment after authorization and integrity verification.
 router.get(
   "/:id/download",
-  async (req: Request, res: Response): Promise<void> {
+  async (req: Request, res: Response): Promise<void> => {
     const attachmentId = parseObjectIdParam(req.params.id, "attachment");
 
-    const attachment = await Attachment.findById(attachmentId).populate("uploadedBy", "firstName lastName");
+    const attachment = await Attachment.findById(attachmentId);
+
     if (!attachment) {
       throw new HttpError(404, "Attachment not found.");
     }
 
     const viewer = getIkoshUser(req);
+    const isOwner = String(attachment.uploadedBy) === String(viewer._id);
 
-    // Authorization: owner, HSE_MANAGER, ADMIN, or site-assigned employee.
-    const isOwner = String(attachment.uploadedBy._id) === String(viewer._id);
-    const isHseStaff = isHseManagementRole(viewer.ikoshRole);
+    if (!isHseManagementRole(viewer.ikoshRole) && !isOwner) {
+      let siteId: unknown = null;
 
-    if (!isOwner && !isHseStaff) {
-      // TODO: site assignment check in Phase 2 (if entityType/entityId points to a site).
-      throw new HttpError(403, "You do not have permission to download this attachment.");
+      if (attachment.entityType === "site") {
+        siteId = attachment.entityId;
+      } else if (
+        attachment.entityType === "incident" &&
+        attachment.entityId
+      ) {
+        const incident = await Incident.findById(attachment.entityId)
+          .select("site")
+          .lean();
+        siteId = incident?.site ?? null;
+      }
+
+      if (!siteId || !isSiteAssigned(viewer, siteId)) {
+        throw new HttpError(404, "Attachment not found.");
+      }
     }
 
-    // Return signed URL or stream the file from local storage.
-    // For now we return placeholder metadata indicating where the file lives.
-    res.status(200).json({
-      success: true,
-      attachment: toAttachmentSummary(attachment),
-      storageKey: attachment.storageKey,
-      // In production we would return a pre-signed URL or stream the file.
-    });
+    let bytes: Buffer;
+
+    try {
+      bytes = await readAttachmentBytes(attachment.storageKey);
+    } catch {
+      throw new HttpError(404, "Attachment not found.");
+    }
+
+    if (sha256Hex(bytes) !== attachment.checksum) {
+      throw new HttpError(409, "Attachment integrity verification failed.");
+    }
+
+    const filename = attachment.originalFilename.replace(/["\\]/g, "_");
+
+    res.setHeader("Content-Type", attachment.mimeType);
+    res.setHeader("Content-Length", String(bytes.length));
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    );
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.status(200).send(bytes);
   },
 );
 

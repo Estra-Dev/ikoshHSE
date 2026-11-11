@@ -25,7 +25,33 @@ export const paginationQuerySchema = z.object({
 
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
 
-import { IKOSH_ROLES } from "../ikosh-constants.js";
+export interface Pagination extends PaginationQuery {
+  skip: number;
+}
+
+/**
+ * Parses `page`/`limit` query parameters consistently across list routes.
+ * Invalid values (for example `?page=abc`) are rejected with a 400 instead of
+ * reaching MongoDB as `NaN`.
+ */
+export function parsePagination(query: {
+  page?: unknown;
+  limit?: unknown;
+}): Pagination {
+  const parsed = paginationQuerySchema.safeParse({
+    page: query.page,
+    limit: query.limit,
+  });
+
+  if (!parsed.success) {
+    throw new HttpError(400, firstValidationIssue(parsed.error));
+  }
+
+  return {
+    ...parsed.data,
+    skip: (parsed.data.page - 1) * parsed.data.limit,
+  };
+}
 
 export const ikoshRoleSchema = z.enum(IKOSH_ROLES);
 

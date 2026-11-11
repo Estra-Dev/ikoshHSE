@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# IKOSH HSE Web
 
-## Getting Started
+Next.js 16 (App Router) frontend for the IKOSH HSE system. Authentication is
+provided by the hosted DigitAuth service; all authorization is enforced by the
+API in `apps/api`.
 
-First, run the development server:
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+cp apps/web/.env.example apps/web/.env.local
+# Fill in DigitAuth and API values.
+
+pnpm --filter web dev        # http://localhost:3000
+pnpm --filter web type-check
+pnpm --filter web test
+pnpm --filter web lint
+pnpm --filter web build
+pnpm --filter web start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable                                 | Purpose                               |
+| ---------------------------------------- | ------------------------------------- |
+| `NEXT_PUBLIC_DIGIT_AUTH_API_URL`         | DigitAuth hosted API URL.             |
+| `NEXT_PUBLIC_DIGIT_AUTH_PUBLISHABLE_KEY` | DigitAuth publishable key.            |
+| `NEXT_PUBLIC_API_URL`                    | Public base URL of the IKOSH HSE API. |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`NEXT_PUBLIC_API_URL` defaults to `http://localhost:4000` in development.
+Production deployments must use the API's public HTTPS origin, and the API's
+`WEB_ORIGIN` must match this web app's origin.
 
-## Learn More
+## Phase 1 screens
 
-To learn more about Next.js, take a look at the following resources:
+The current frontend covers the employee directory, employee profiles,
+self-service contact updates, department management, sign-in/sign-up and
+password reset. HSE incident, attachment and dashboard workflows are exposed
+by the API but are not yet given dedicated screens; Phase 1 does not redesign
+the frontend.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Client-side helpers in `src/lib/permissions.ts` only control visible
+affordances. The API re-checks every action against the MongoDB employee
+record and site assignments.

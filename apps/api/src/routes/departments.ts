@@ -10,8 +10,13 @@ import {
   createDepartmentSchema,
   updateDepartmentSchema,
 } from "../lib/validation/department.js";
-import { attachIkoshUser, getIkoshUser } from "../middleware/attach-ikosh-user.js";
+import {
+  attachIkoshUser,
+  getIkoshUser,
+} from "../middleware/attach-ikosh-user.js";
 import { requireIkoshRole } from "../middleware/require-ikosh-role.js";
+import { runAuditedMutation } from "../lib/audit-log.js";
+import { departmentAuditSnapshot } from "../lib/audit-snapshots.js";
 import { Department } from "../models/Department.js";
 import { User } from "../models/User.js";
 import { toDepartmentSummary } from "../serializers/department.js";
@@ -40,6 +45,7 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
   const departments = await Department.find(
     includeInactive ? {} : { isActive: true },
   )
+    .lean()
     .sort({ name: 1 })
     .populate("head", "firstName lastName");
 
@@ -79,36 +85,55 @@ router.post(
     }
 
     const { name, code, description, headId } = parsed.data;
+    const viewer = getIkoshUser(req);
 
-    let head = null;
+    const { department, head } = await runAuditedMutation(
+      viewer._id,
+      async (session) => {
+        let head = null;
 
-    if (headId) {
-      head = await User.findById(headId);
+        if (headId) {
+          head = await User.findById(headId).session(session);
 
-      if (!head) {
-        throw new HttpError(400, "Specified department head was not found.");
-      }
-    }
+          if (!head) {
+            throw new HttpError(
+              400,
+              "Specified department head was not found.",
+            );
+          }
+        }
 
-    let department;
+        const created = new Department({
+          name,
+          code,
+          description: description ?? "",
+          head: headId ?? null,
+        });
 
-    try {
-      department = await Department.create({
-        name,
-        code,
-        description: description ?? "",
-        head: headId ?? null,
-      });
-    } catch (error) {
-      if (isDuplicateKeyError(error)) {
-        throw new HttpError(
-          409,
-          "A department with this name or code already exists.",
-        );
-      }
+        try {
+          await created.save({ session });
+        } catch (error) {
+          if (isDuplicateKeyError(error)) {
+            throw new HttpError(
+              409,
+              "A department with this name or code already exists.",
+            );
+          }
 
-      throw error;
-    }
+          throw error;
+        }
+
+        return {
+          result: { department: created, head },
+          audit: {
+            action: "department.created",
+            entityType: "Department",
+            entityId: created._id,
+            after: departmentAuditSnapshot(created),
+          },
+        };
+      },
+    );
 
     res.status(201).json({
       success: true,
@@ -130,59 +155,80 @@ router.patch(
       throw new HttpError(400, firstValidationIssue(parsed.error));
     }
 
-    const department = await Department.findById(departmentId);
-
-    if (!department) {
-      throw new HttpError(404, "Department not found.");
-    }
-
     const { name, code, description, headId, isActive } = parsed.data;
+    const viewer = getIkoshUser(req);
 
-    if (headId !== undefined) {
-      if (headId) {
-        const head = await User.findById(headId);
+    const department = await runAuditedMutation(
+      viewer._id,
+      async (session) => {
+        const department = await Department.findById(departmentId).session(
+          session,
+        );
 
-        if (!head) {
-          throw new HttpError(
-            400,
-            "Specified department head was not found.",
-          );
+        if (!department) {
+          throw new HttpError(404, "Department not found.");
         }
 
-        department.head = head._id;
-      } else {
-        department.head = null;
-      }
-    }
+        const before = departmentAuditSnapshot(department);
 
-    if (name !== undefined) {
-      department.name = name;
-    }
+        if (headId !== undefined) {
+          if (headId) {
+            const head = await User.findById(headId).session(session);
 
-    if (code !== undefined) {
-      department.code = code;
-    }
+            if (!head) {
+              throw new HttpError(
+                400,
+                "Specified department head was not found.",
+              );
+            }
 
-    if (description !== undefined) {
-      department.description = description ?? "";
-    }
+            department.head = head._id;
+          } else {
+            department.head = null;
+          }
+        }
 
-    if (isActive !== undefined) {
-      department.isActive = isActive;
-    }
+        if (name !== undefined) {
+          department.name = name;
+        }
 
-    try {
-      await department.save();
-    } catch (error) {
-      if (isDuplicateKeyError(error)) {
-        throw new HttpError(
-          409,
-          "A department with this name or code already exists.",
-        );
-      }
+        if (code !== undefined) {
+          department.code = code;
+        }
 
-      throw error;
-    }
+        if (description !== undefined) {
+          department.description = description ?? "";
+        }
+
+        if (isActive !== undefined) {
+          department.isActive = isActive;
+        }
+
+        try {
+          await department.save({ session });
+        } catch (error) {
+          if (isDuplicateKeyError(error)) {
+            throw new HttpError(
+              409,
+              "A department with this name or code already exists.",
+            );
+          }
+
+          throw error;
+        }
+
+        return {
+          result: department,
+          audit: {
+            action: "department.updated",
+            entityType: "Department",
+            entityId: department._id,
+            before,
+            after: departmentAuditSnapshot(department),
+          },
+        };
+      },
+    );
 
     if (department.head) {
       await department.populate("head", "firstName lastName");
@@ -194,11 +240,7 @@ router.patch(
 
     res.status(200).json({
       success: true,
-      department: toDepartmentSummary(
-        department,
-        department.head,
-        memberCount,
-      ),
+      department: toDepartmentSummary(department, department.head, memberCount),
     });
   },
 );
@@ -211,30 +253,44 @@ router.delete(
   async (req: Request, res: Response): Promise<void> => {
     const departmentId = parseObjectIdParam(req.params.id, "department");
 
-    const department = await Department.findById(departmentId);
+    const viewer = getIkoshUser(req);
 
-    if (!department) {
-      throw new HttpError(404, "Department not found.");
-    }
+    await runAuditedMutation(viewer._id, async (session) => {
+      const department = await Department.findById(departmentId).session(
+        session,
+      );
 
-    const memberCount = await User.countDocuments({
-      department: department._id,
+      if (!department) {
+        throw new HttpError(404, "Department not found.");
+      }
+
+      const memberCount = await User.countDocuments({
+        department: department._id,
+      }).session(session);
+
+      if (memberCount > 0) {
+        throw new HttpError(
+          409,
+          `Department still has ${memberCount} assigned employee${
+            memberCount === 1 ? "" : "s"
+          }. Reassign them before deleting.`,
+        );
+      }
+
+      await Department.deleteOne({ _id: department._id }, { session });
+
+      return {
+        result: department,
+        audit: {
+          action: "department.deleted",
+          entityType: "Department",
+          entityId: department._id,
+          before: departmentAuditSnapshot(department),
+        },
+      };
     });
 
-    if (memberCount > 0) {
-      throw new HttpError(
-        409,
-        `Department still has ${memberCount} assigned employee${
-          memberCount === 1 ? "" : "s"
-        }. Reassign them before deleting.`,
-      );
-    }
-
-    await Department.deleteOne({ _id: department._id });
-
-    res
-      .status(200)
-      .json({ success: true, message: "Department deleted." });
+    res.status(200).json({ success: true, message: "Department deleted." });
   },
 );
 

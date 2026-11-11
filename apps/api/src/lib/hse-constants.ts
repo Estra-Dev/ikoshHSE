@@ -4,8 +4,7 @@
  * These lists are the single source of truth for classification values used
  * by HSE workflows (incidents, permits, environmental records). Phase 1
  * exposes them through `/api/hse/reference` so reporting forms stay in sync
- * with the server; Phase 2+ models and validation schemas consume them
- * directly.
+ * with the server, and incident models/validation consume them directly.
  *
  * Values are deliberately stable, uppercase codes rather than free text:
  * they are stored on records, filtered on, and used in KPI formulas, so they
@@ -50,9 +49,8 @@ export function isSiteStatus(value: unknown): value is SiteStatus {
 }
 
 /**
- * Incident and near-miss categories. Classification happens during
- * investigation (Phase 2 workflow), never at reporting time: the initial
- * report only needs to be fast.
+ * Incident and near-miss categories. Classification is management-controlled
+ * and happens after reporting; the initial report only needs to be fast.
  */
 export const INCIDENT_CATEGORIES = [
   "FATALITY",
@@ -78,6 +76,56 @@ export function isIncidentCategory(
   return (
     typeof value === "string" &&
     (INCIDENT_CATEGORIES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Incident workflow status. Reports start as REPORTED; HSE management only
+ * may move them through TRIAGED to CLOSED.
+ */
+export const INCIDENT_STATUSES = ["REPORTED", "TRIAGED", "CLOSED"] as const;
+
+export type IncidentStatus = (typeof INCIDENT_STATUSES)[number];
+
+export function isIncidentStatus(value: unknown): value is IncidentStatus {
+  return (
+    typeof value === "string" &&
+    (INCIDENT_STATUSES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Incident workflow is strictly forward-only: REPORTED → TRIAGED → CLOSED.
+ * Reopening or skipping a stage is rejected.
+ */
+export const INCIDENT_STATUS_TRANSITIONS: Record<
+  IncidentStatus,
+  readonly IncidentStatus[]
+> = {
+  REPORTED: ["TRIAGED"],
+  TRIAGED: ["CLOSED"],
+  CLOSED: [],
+};
+
+export function canTransitionIncidentStatus(
+  from: IncidentStatus,
+  to: IncidentStatus,
+): boolean {
+  return INCIDENT_STATUS_TRANSITIONS[from].includes(to);
+}
+
+/**
+ * Report kind chosen by the reporter. Category classification (including the
+ * NEAR_MISS category) is a separate, management-controlled workflow step.
+ */
+export const INCIDENT_TYPES = ["INCIDENT", "NEAR_MISS"] as const;
+
+export type IncidentType = (typeof INCIDENT_TYPES)[number];
+
+export function isIncidentType(value: unknown): value is IncidentType {
+  return (
+    typeof value === "string" &&
+    (INCIDENT_TYPES as readonly string[]).includes(value)
   );
 }
 
