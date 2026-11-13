@@ -4,6 +4,7 @@ import { app } from "../src/app.js";
 import { Attachment } from "../src/models/Attachment.js";
 import { Contractor } from "../src/models/Contractor.js";
 import { ContractorPersonnel } from "../src/models/ContractorPersonnel.js";
+import { ContractorPersonnelSiteAssignment } from "../src/models/ContractorPersonnelSiteAssignment.js";
 import { Incident } from "../src/models/Incident.js";
 import { Project } from "../src/models/Project.js";
 import { Site } from "../src/models/Site.js";
@@ -49,6 +50,35 @@ async function createPersonnel(
     lastName,
     personnelId: `DBPERSON-${sequence}`,
     site: siteId,
+  });
+}
+
+async function createUnassignedPersonnel(
+  contractorId: unknown,
+  options: { isActive?: boolean } = {},
+) {
+  sequence += 1;
+  return ContractorPersonnel.create({
+    contractor: contractorId,
+    firstName: "Unassigned",
+    lastName: `Person ${sequence}`,
+    personnelId: `DBPERSON-${sequence}`,
+    isActive: options.isActive ?? true,
+  });
+}
+
+async function createAssignment(
+  personnelId: unknown,
+  contractorId: unknown,
+  siteId: unknown,
+  options: { isActive?: boolean } = {},
+) {
+  return ContractorPersonnelSiteAssignment.create({
+    personnel: personnelId,
+    contractor: contractorId,
+    site: siteId,
+    isActive: options.isActive ?? true,
+    ...(options.isActive === false ? { endedAt: new Date() } : {}),
   });
 }
 
@@ -224,6 +254,71 @@ describe("HSE dashboard", () => {
       to: null,
     });
     expect(JSON.stringify(response.body)).not.toContain("Worker");
+  });
+
+  it("counts distinct active personnel once across visible sites", async () => {
+    const project = await createProject();
+    const siteOne = await createSite(project._id);
+    const siteTwo = await createSite(project._id);
+    await createSite(project._id);
+    const contractor = await createContractor(project._id);
+
+    // Assigned to two visible sites; must be counted once.
+    const multiSite = await createUnassignedPersonnel(contractor._id);
+    await createAssignment(multiSite._id, contractor._id, siteOne._id);
+    await createAssignment(multiSite._id, contractor._id, siteTwo._id);
+
+    // Legacy-only assignment still counts.
+    await createPersonnel(
+      contractor._id,
+      siteOne._id,
+      "Legacy",
+      "Worker",
+    );
+
+    // Legacy value plus an active assignment must deduplicate.
+    const bothSources = await createPersonnel(
+      contractor._id,
+      siteOne._id,
+      "Both",
+      "Sources",
+    );
+    await createAssignment(bothSources._id, contractor._id, siteTwo._id);
+
+    // Ended assignments do not count.
+    const ended = await createUnassignedPersonnel(contractor._id);
+    await createAssignment(ended._id, contractor._id, siteOne._id, {
+      isActive: false,
+    });
+
+    // Inactive personnel do not count.
+    const inactive = await createUnassignedPersonnel(contractor._id, {
+      isActive: false,
+    });
+    await createAssignment(inactive._id, contractor._id, siteOne._id);
+
+    // Unassigned personnel do not count.
+    await createUnassignedPersonnel(contractor._id);
+
+    const manager = await signInAsIkoshUser({ ikoshRole: "HSE_MANAGER" });
+    const employee = await signInAsIkoshUser({
+      ikoshRole: "EMPLOYEE",
+      assignedSites: [siteOne._id, siteTwo._id],
+    });
+
+    const managementWide = await request(app)
+      .get("/api/hse/dashboard")
+      .set("Authorization", manager.authorization);
+    const scoped = await request(app)
+      .get("/api/hse/dashboard")
+      .set("Authorization", employee.authorization);
+    const siteScoped = await request(app)
+      .get(`/api/hse/dashboard?siteId=${siteTwo._id}`)
+      .set("Authorization", manager.authorization);
+
+    expect(managementWide.body.data.totals.contractorPersonnel).toBe(3);
+    expect(scoped.body.data.totals.contractorPersonnel).toBe(3);
+    expect(siteScoped.body.data.totals.contractorPersonnel).toBe(2);
   });
 
   it("scopes aggregates to assigned sites for non-management roles", async () => {

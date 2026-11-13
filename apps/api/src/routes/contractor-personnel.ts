@@ -19,7 +19,8 @@ import {
 } from "../middleware/attach-ikosh-user.js";
 import { requireIkoshRole } from "../middleware/require-ikosh-role.js";
 import { isHseManagementRole } from "../lib/ikosh-constants.js";
-import { assertSiteAccess, siteScopeFilter } from "../lib/site-access.js";
+import { canViewAllSites } from "../lib/hse-permissions.js";
+import { assertSiteAccess } from "../lib/site-access.js";
 import { runAuditedMutation } from "../lib/audit-log.js";
 import {
   contractorPersonnelAuditSnapshot,
@@ -28,12 +29,15 @@ import {
 import { ContractorPersonnel } from "../models/ContractorPersonnel.js";
 import { ContractorPersonnelSiteAssignment } from "../models/ContractorPersonnelSiteAssignment.js";
 import { Contractor } from "../models/Contractor.js";
-import { Site } from "../models/Site.js";
 import {
   toContractorPersonnelSiteAssignmentSummary,
   toContractorPersonnelSummary,
 } from "../serializers/contractor-personnel.js";
-import { assertAssignableSite } from "../lib/contractor-personnel-assignments.js";
+import {
+  assertAssignableSite,
+  hasActiveAssignmentsForPersonnel,
+  personnelIdsAssignedToSites,
+} from "../lib/contractor-personnel-assignments.js";
 
 const router: Router = Router();
 
@@ -50,6 +54,31 @@ function isDuplicateKeyError(error: unknown): boolean {
     "code" in error &&
     error.code === 11000
   );
+}
+
+function rejectLegacySiteId(body: unknown): void {
+  if (typeof body === "object" && body !== null && "siteId" in body) {
+    throw new HttpError(
+      400,
+      "siteId is no longer accepted. Use POST /api/contractor-personnel/:id/assignments to assign sites.",
+    );
+  }
+}
+
+function toActiveSiteRef(value: unknown): {
+  id: string;
+  name: string | null;
+} {
+  if (typeof value === "object" && value !== null && "_id" in value) {
+    const populated = value as { _id: unknown; name?: unknown };
+
+    return {
+      id: String(populated._id),
+      name: typeof populated.name === "string" ? populated.name : null,
+    };
+  }
+
+  return { id: String(value), name: null };
 }
 
 // All contractor personnel routes require authenticated, active IKOSH employee.
@@ -86,9 +115,23 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
     ? { contractor: new Types.ObjectId(contractorId) }
     : {};
 
-  const siteFilter = siteId
-    ? { site: new Types.ObjectId(siteId) }
-    : siteScopeFilter(viewer, "site");
+  // Site filtering uses active assignment records, with legacy
+  // `ContractorPersonnel.site` values included until the backfill is verified.
+  let allowedSiteIds: Types.ObjectId[] | null = null;
+
+  if (siteId) {
+    allowedSiteIds = [new Types.ObjectId(siteId)];
+  } else if (!canViewAllSites(viewer.ikoshRole)) {
+    allowedSiteIds = (viewer.assignedSites ?? []).map(
+      (assignedSite) => new Types.ObjectId(String(assignedSite)),
+    );
+  }
+
+  const siteFilter =
+    allowedSiteIds === null
+      ? {}
+      : { _id: { $in: await personnelIdsAssignedToSites(allowedSiteIds) } };
+
   const filter = {
     ...contractorFilter,
     ...siteFilter,
@@ -108,9 +151,36 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
       .limit(limit),
   ]);
 
+  const personnelIds = personnel.map((person) => person._id);
+  const activeAssignments =
+    personnelIds.length === 0
+      ? []
+      : await ContractorPersonnelSiteAssignment.find({
+          personnel: { $in: personnelIds },
+          isActive: true,
+        })
+          .populate("site", "name")
+          .lean();
+
+  const activeSitesByPersonnel = new Map<
+    string,
+    { id: string; name: string | null }[]
+  >();
+
+  for (const assignment of activeAssignments) {
+    const key = String(assignment.personnel);
+    const sites = activeSitesByPersonnel.get(key) ?? [];
+    sites.push(toActiveSiteRef(assignment.site));
+    activeSitesByPersonnel.set(key, sites);
+  }
+
   res.status(200).json({
     success: true,
-    personnel: personnel.map(toContractorPersonnelSummary),
+    personnel: personnel.map((person) =>
+      toContractorPersonnelSummary(person, {
+        activeSites: activeSitesByPersonnel.get(String(person._id)) ?? [],
+      }),
+    ),
     pagination: {
       page,
       limit,
@@ -146,10 +216,17 @@ router.get(
     const serializedAssignments = assignments.map(
       toContractorPersonnelSiteAssignmentSummary,
     );
+    const activeAssignments = assignments.filter(
+      (assignment) => assignment.isActive,
+    );
 
     res.status(200).json({
       success: true,
-      personnel: toContractorPersonnelSummary(personnel),
+      personnel: toContractorPersonnelSummary(personnel, {
+        activeSites: activeAssignments.map((assignment) =>
+          toActiveSiteRef(assignment.site),
+        ),
+      }),
       activeAssignments: serializedAssignments.filter(
         (assignment) => assignment.isActive,
       ),
@@ -289,6 +366,8 @@ router.post(
   "/",
   requireIkoshRole("ADMIN", "HSE_MANAGER"),
   async (req: Request, res: Response): Promise<void> => {
+    rejectLegacySiteId(req.body);
+
     const parsed = createContractorPersonnelSchema.safeParse(req.body);
     if (!parsed.success) {
       throw new HttpError(400, firstValidationIssue(parsed.error));
@@ -304,7 +383,6 @@ router.post(
       jobTitle,
       phone,
       email,
-      siteId,
     } = parsed.data;
 
     const personnel = await runAuditedMutation(viewer._id, async (session) => {
@@ -314,15 +392,6 @@ router.post(
       );
       if (!contractor) {
         throw new HttpError(404, "Specified contractor was not found.");
-      }
-
-      // Verify site exists if being assigned.
-      if (siteId) {
-        const site = await Site.findById(siteId).session(session);
-        if (!site) {
-          throw new HttpError(404, "Specified site was not found.");
-        }
-        assertSiteAccess(viewer, siteId);
       }
 
       // Validate personnelId uniqueness within contractor if provided.
@@ -347,7 +416,6 @@ router.post(
         jobTitle,
         phone,
         email,
-        site: siteId,
       });
 
       await created.save({ session });
@@ -375,6 +443,8 @@ router.patch(
   "/:id",
   requireIkoshRole("ADMIN", "HSE_MANAGER"),
   async (req: Request, res: Response): Promise<void> => {
+    rejectLegacySiteId(req.body);
+
     const personnelId = parseObjectIdParam(req.params.id, "personnel");
 
     const parsed = updateContractorPersonnelSchema.safeParse(req.body);
@@ -384,7 +454,7 @@ router.patch(
 
     const viewer = getIkoshUser(req);
 
-    const { contractorId, siteId, ...rest } = parsed.data;
+    const { contractorId, ...rest } = parsed.data;
 
     const personnel = await runAuditedMutation(viewer._id, async (session) => {
       const personnel = await ContractorPersonnel.findById(personnelId).session(
@@ -404,7 +474,23 @@ router.patch(
         if (!newContractor) {
           throw new HttpError(404, "Specified contractor was not found.");
         }
-        personnel.contractor = new Types.ObjectId(contractorId);
+
+        if (String(contractorId) !== String(personnel.contractor)) {
+          const hasActiveAssignments =
+            await hasActiveAssignmentsForPersonnel(
+              personnel._id,
+              session,
+            );
+
+          if (personnel.site || hasActiveAssignments) {
+            throw new HttpError(
+              409,
+              "Cannot change contractor while site assignments exist. End active assignments and resolve the legacy site reference first.",
+            );
+          }
+
+          personnel.contractor = new Types.ObjectId(contractorId);
+        }
 
         // Validate new personnelId uniqueness within new contractor if provided.
         if (rest.personnelId !== undefined) {
@@ -420,18 +506,6 @@ router.patch(
             );
           }
         }
-      }
-
-      // Verify site exists if being changed.
-      if (siteId !== undefined) {
-        if (siteId) {
-          const newSite = await Site.findById(siteId).session(session);
-          if (!newSite) {
-            throw new HttpError(404, "Specified site was not found.");
-          }
-          assertSiteAccess(viewer, siteId);
-        }
-        personnel.site = siteId ? new Types.ObjectId(siteId) : null;
       }
 
       // Apply other updates.
@@ -503,10 +577,15 @@ router.delete(
         throw new HttpError(404, "Contractor personnel not found.");
       }
 
-      if (personnel.site) {
+      const hasActiveAssignments = await hasActiveAssignmentsForPersonnel(
+        personnel._id,
+        session,
+      );
+
+      if (personnel.site || hasActiveAssignments) {
         throw new HttpError(
           409,
-          "Cannot delete personnel with active site assignment. Reassign or remove site first.",
+          "Cannot delete personnel with active site assignments. End the assignments and resolve the legacy site reference first.",
         );
       }
 

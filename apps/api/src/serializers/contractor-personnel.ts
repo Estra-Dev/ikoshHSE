@@ -13,6 +13,11 @@ export interface ContractorPersonnelLike {
   updatedAt: Date;
 }
 
+export interface ContractorPersonnelSiteRef {
+  id: string;
+  name: string | null;
+}
+
 export interface SerializedContractorPersonnel {
   id: string;
   contractor: { id: string };
@@ -22,10 +27,17 @@ export interface SerializedContractorPersonnel {
   jobTitle: string | null;
   phone: string | null;
   email: string | null;
+  /** Legacy single-site reference, kept until the backfill is verified. */
   site: { id: string } | null;
+  /** Sites the person is assigned to via active assignment records. */
+  activeSites: ContractorPersonnelSiteRef[];
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ContractorPersonnelSummaryOptions {
+  activeSites?: readonly ContractorPersonnelSiteRef[];
 }
 
 export interface ContractorPersonnelSiteAssignmentLike {
@@ -128,6 +140,7 @@ function toIsoOrNull(value: unknown): string | null {
 /** Whitelists contractor personnel response fields and converts the Mongo document to a JSON-safe shape. */
 export function toContractorPersonnelSummary(
   personnel: ContractorPersonnelLike,
+  options: ContractorPersonnelSummaryOptions = {},
 ): SerializedContractorPersonnel {
   return {
     id: String(personnel._id),
@@ -143,6 +156,10 @@ export function toContractorPersonnelSummary(
     site: personnel.site
       ? { id: toRefId(personnel.site) ?? String(personnel.site) }
       : null,
+    activeSites: (options.activeSites ?? []).map((site) => ({
+      id: site.id,
+      name: site.name ?? null,
+    })),
     isActive: personnel.isActive,
     createdAt: personnel.createdAt.toISOString(),
     updatedAt: personnel.updatedAt.toISOString(),

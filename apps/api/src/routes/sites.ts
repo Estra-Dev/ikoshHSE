@@ -25,6 +25,7 @@ import { Site } from "../models/Site.js";
 import { Project } from "../models/Project.js";
 import { User } from "../models/User.js";
 import { ContractorPersonnel } from "../models/ContractorPersonnel.js";
+import { ContractorPersonnelSiteAssignment } from "../models/ContractorPersonnelSiteAssignment.js";
 import { toSiteSummary } from "../serializers/site.js";
 
 const router: Router = Router();
@@ -257,16 +258,25 @@ router.delete(
         throw new HttpError(404, "Site not found.");
       }
 
-      // Block deletion if employees or contractor personnel are assigned to this site.
-      const [employeesCount, personnelCount] = await Promise.all([
-        User.countDocuments({ assignedSites: siteId }).session(session),
-        ContractorPersonnel.countDocuments({ site: siteId }).session(session),
-      ]);
+      // Block deletion if employees are assigned, contractor assignment
+      // history exists, or unbackfilled legacy personnel site values remain.
+      const [employeesCount, assignmentHistoryCount, legacyPersonnelCount] =
+        await Promise.all([
+          User.countDocuments({ assignedSites: siteId }).session(session),
+          ContractorPersonnelSiteAssignment.countDocuments({
+            site: siteId,
+          }).session(session),
+          ContractorPersonnel.countDocuments({ site: siteId }).session(session),
+        ]);
 
-      if (employeesCount > 0 || personnelCount > 0) {
+      if (
+        employeesCount > 0 ||
+        assignmentHistoryCount > 0 ||
+        legacyPersonnelCount > 0
+      ) {
         throw new HttpError(
           409,
-          `Site still has assigned employees or personnel. Reassign or deactivate them first.`,
+          `Site still has assigned employees or contractor personnel assignment history. Reassign employees or retire the site instead of deleting it.`,
         );
       }
 

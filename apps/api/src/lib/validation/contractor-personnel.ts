@@ -15,7 +15,6 @@ export const createContractorPersonnelSchema = z.object({
     .email()
     .max(120)
     .optional(),
-  siteId: objectIdSchema.optional(),
 });
 
 export type CreateContractorPersonnelInput = z.infer<
@@ -37,7 +36,6 @@ export const updateContractorPersonnelSchema = z
       .email()
       .max(120)
       .optional(),
-    siteId: objectIdSchema.optional(),
     isActive: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {

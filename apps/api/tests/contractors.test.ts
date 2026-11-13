@@ -2,7 +2,10 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { Contractor } from "../src/models/Contractor.js";
 import { ContractorPersonnel } from "../src/models/ContractorPersonnel.js";
+import { ContractorPersonnelSiteAssignment } from "../src/models/ContractorPersonnelSiteAssignment.js";
 import { Project } from "../src/models/Project.js";
+import { Site } from "../src/models/Site.js";
+import { AuditLog } from "../src/models/AuditLog.js";
 import { signInAsIkoshUser } from "./helpers.js";
 import { buildHseTestApp } from "./hse-test-app.js";
 
@@ -143,6 +146,96 @@ describe("contractors API", () => {
 
     expect(updated.status).toBe(200);
     expect(updated.body.contractor.trade).toBe("Electrical");
+  });
+
+  it("blocks removing a project association while personnel are actively assigned", async () => {
+    const project = await createProject();
+    const retainedProject = await createProject();
+    const site = await Site.create({
+      project: project._id,
+      name: "Guard Site",
+      code: "GUARD1",
+    });
+    const contractor = await createContractor({
+      projects: [project._id, retainedProject._id],
+    });
+    const personnel = await ContractorPersonnel.create({
+      contractor: contractor._id,
+      firstName: "Assigned",
+      lastName: "Worker",
+    });
+    const assignment = await ContractorPersonnelSiteAssignment.create({
+      personnel: personnel._id,
+      contractor: contractor._id,
+      site: site._id,
+    });
+    const { authorization } = await signInAsIkoshUser({
+      ikoshRole: "HSE_MANAGER",
+    });
+
+    const blocked = await request(testApp)
+      .patch(`/api/contractors/${contractor._id}`)
+      .set("Authorization", authorization)
+      .send({ projects: [String(retainedProject._id)] });
+
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.message).toContain("active site assignments");
+
+    const unchanged = await Contractor.findById(contractor._id).lean();
+    expect(unchanged?.projects.map(String)).toEqual(
+      expect.arrayContaining([String(project._id), String(retainedProject._id)]),
+    );
+
+    assignment.isActive = false;
+    assignment.endedAt = new Date();
+    await assignment.save();
+
+    const allowed = await request(testApp)
+      .patch(`/api/contractors/${contractor._id}`)
+      .set("Authorization", authorization)
+      .send({ projects: [String(retainedProject._id)] });
+
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.contractor.projects).toEqual([
+      { id: String(retainedProject._id) },
+    ]);
+
+    const log = await AuditLog.findOne({
+      action: "contractor.updated",
+      entityId: contractor._id,
+    }).lean();
+
+    expect(log).not.toBeNull();
+    expect(log?.before).toMatchObject({
+      projects: expect.arrayContaining([String(project._id)]),
+    });
+    expect(log?.after).toMatchObject({ projects: [String(retainedProject._id)] });
+  });
+
+  it("blocks removing a project association while legacy personnel site references remain", async () => {
+    const project = await createProject();
+    const site = await Site.create({
+      project: project._id,
+      name: "Legacy Guard Site",
+      code: "GUARD2",
+    });
+    const contractor = await createContractor({ projects: [project._id] });
+    await ContractorPersonnel.create({
+      contractor: contractor._id,
+      firstName: "Legacy",
+      lastName: "Worker",
+      site: site._id,
+    });
+    const { authorization } = await signInAsIkoshUser({
+      ikoshRole: "ADMIN",
+    });
+
+    const blocked = await request(testApp)
+      .patch(`/api/contractors/${contractor._id}`)
+      .set("Authorization", authorization)
+      .send({ projects: [] });
+
+    expect(blocked.status).toBe(409);
   });
 
   it("blocks deletion while projects or personnel are linked", async () => {

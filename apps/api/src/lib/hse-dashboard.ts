@@ -8,10 +8,10 @@ import {
 import { assertSiteAccess, type SiteScopedViewer } from "./site-access.js";
 import { Attachment } from "../models/Attachment.js";
 import { Contractor } from "../models/Contractor.js";
-import { ContractorPersonnel } from "../models/ContractorPersonnel.js";
 import { Incident } from "../models/Incident.js";
 import { Project } from "../models/Project.js";
 import { Site } from "../models/Site.js";
+import { countDistinctActivePersonnelForSites } from "./contractor-personnel-assignments.js";
 
 export interface HseDashboardFilters {
   projectId?: string;
@@ -183,9 +183,6 @@ export async function buildHseDashboard(
   const siteCountFilter =
     visibleSiteIds === null ? {} : { _id: { $in: visibleSiteIds } };
 
-  const personnelCountFilter =
-    visibleSiteIds === null ? {} : { site: { $in: visibleSiteIds } };
-
   let contractorCountFilter: Record<string, unknown> = {};
 
   if (projectIds !== null) {
@@ -257,7 +254,7 @@ export async function buildHseDashboard(
         : Project.countDocuments(),
     Site.countDocuments(siteCountFilter),
     Contractor.countDocuments(contractorCountFilter),
-    ContractorPersonnel.countDocuments(personnelCountFilter),
+    countDistinctActivePersonnelForSites(visibleSiteIds),
     Attachment.countDocuments(attachmentFilter),
     Incident.aggregate<IncidentFacets>([
       { $match: incidentMatch },

@@ -23,6 +23,7 @@ import { contractorAuditSnapshot } from "../lib/audit-snapshots.js";
 import { Contractor } from "../models/Contractor.js";
 import { Project } from "../models/Project.js";
 import { ContractorPersonnel } from "../models/ContractorPersonnel.js";
+import { hasActiveAssignmentsForProjects } from "../lib/contractor-personnel-assignments.js";
 import { toContractorSummary } from "../serializers/contractor.js";
 
 const router: Router = Router();
@@ -191,6 +192,29 @@ router.patch(
               );
             }
           }
+
+          // Removing a project association is blocked while personnel still
+          // have active assignments (or unbackfilled legacy site values) at
+          // that project's sites.
+          const nextProjectIds = new Set(projects);
+          const removedProjectIds = (contractor.projects ?? [])
+            .filter((projectId) => !nextProjectIds.has(String(projectId)))
+            .map((projectId) => new Types.ObjectId(String(projectId)));
+
+          if (
+            removedProjectIds.length > 0 &&
+            (await hasActiveAssignmentsForProjects(
+              contractor._id,
+              removedProjectIds,
+              session,
+            ))
+          ) {
+            throw new HttpError(
+              409,
+              "Cannot remove project associations while personnel have active site assignments under those projects. End the assignments first.",
+            );
+          }
+
           contractor.projects = projects.map((id) => new Types.ObjectId(id));
         }
 

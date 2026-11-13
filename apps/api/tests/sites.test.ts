@@ -2,6 +2,7 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { Contractor } from "../src/models/Contractor.js";
 import { ContractorPersonnel } from "../src/models/ContractorPersonnel.js";
+import { ContractorPersonnelSiteAssignment } from "../src/models/ContractorPersonnelSiteAssignment.js";
 import { Project } from "../src/models/Project.js";
 import { Site } from "../src/models/Site.js";
 import { User } from "../src/models/User.js";
@@ -323,6 +324,50 @@ describe("sites API", () => {
     expect(blockedByPersonnel.status).toBe(409);
 
     await ContractorPersonnel.deleteOne({ _id: personnel._id });
+
+    const deleted = await request(testApp)
+      .delete(`/api/sites/${site._id}`)
+      .set("Authorization", manager.authorization);
+
+    expect(deleted.status).toBe(200);
+  });
+
+  it("blocks deletion while contractor assignment history exists", async () => {
+    const project = await createProject();
+    const site = await createSite(project._id);
+    const contractor = await Contractor.create({ name: "History Contractor" });
+    const personnel = await ContractorPersonnel.create({
+      contractor: contractor._id,
+      firstName: "Historic",
+      lastName: "Person",
+    });
+    const assignment = await ContractorPersonnelSiteAssignment.create({
+      personnel: personnel._id,
+      contractor: contractor._id,
+      site: site._id,
+    });
+    const manager = await signInAsIkoshUser({ ikoshRole: "HSE_MANAGER" });
+
+    const blockedWhileActive = await request(testApp)
+      .delete(`/api/sites/${site._id}`)
+      .set("Authorization", manager.authorization);
+
+    expect(blockedWhileActive.status).toBe(409);
+
+    assignment.isActive = false;
+    assignment.endedAt = new Date();
+    await assignment.save();
+
+    const blockedByHistory = await request(testApp)
+      .delete(`/api/sites/${site._id}`)
+      .set("Authorization", manager.authorization);
+
+    expect(blockedByHistory.status).toBe(409);
+    expect(blockedByHistory.body.message).toContain("assignment history");
+
+    await ContractorPersonnelSiteAssignment.deleteOne({
+      _id: assignment._id,
+    });
 
     const deleted = await request(testApp)
       .delete(`/api/sites/${site._id}`)
