@@ -60,6 +60,23 @@ describe("navigation visibility", () => {
     expect(labelsFor("ADMIN")).toContain("HSE personnel & access");
   });
 
+  it("restricts contractor destinations to HSE managers and admins", () => {
+    const labelsFor = (role: Parameters<typeof visibleNavSections>[0]) =>
+      visibleNavSections(role).flatMap((section) =>
+        section.items.map((item) => item.label),
+      );
+
+    for (const role of ["EMPLOYEE", "SUPERVISOR", "HSE_OFFICER"] as const) {
+      expect(labelsFor(role)).not.toContain("Contractors");
+      expect(labelsFor(role)).not.toContain("Contractor personnel");
+    }
+
+    for (const role of ["HSE_MANAGER", "ADMIN"] as const) {
+      expect(labelsFor(role)).toContain("Contractors");
+      expect(labelsFor(role)).toContain("Contractor personnel");
+    }
+  });
+
   it("exposes only HSE navigation sections", () => {
     expect(NAV_SECTIONS.map((section) => section.label)).toEqual([
       "Command centre",
@@ -102,6 +119,21 @@ describe("active navigation item", () => {
     expect(findActiveNavItem("/sites/507f1f77bcf86cd799439011")?.href).toBe(
       "/sites",
     );
+  });
+
+  it("activates contractor destinations", () => {
+    expect(findActiveNavItem("/contractors")?.href).toBe("/contractors");
+    expect(
+      findActiveNavItem("/contractors/507f1f77bcf86cd799439011")?.href,
+    ).toBe("/contractors");
+    expect(findActiveNavItem("/contractor-personnel")?.href).toBe(
+      "/contractor-personnel",
+    );
+    expect(
+      findActiveNavItem(
+        "/contractor-personnel/507f1f77bcf86cd799439011",
+      )?.href,
+    ).toBe("/contractor-personnel");
   });
 
   it("never activates remaining planned destinations", () => {

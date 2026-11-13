@@ -82,6 +82,14 @@ export function canManageWorksites(role: IkoshRole | undefined): boolean {
   return isHseManagementRole(role);
 }
 
+/**
+ * Contractor registers, personnel records and site assignments are managed by
+ * HSE managers and administrators. The API enforces the same rule.
+ */
+export function canManageContractors(role: IkoshRole | undefined): boolean {
+  return isHseManagementRole(role);
+}
+
 /** Classification and workflow status changes are HSE manager/admin only. */
 export function canManageIncidentWorkflow(
   role: IkoshRole | undefined,

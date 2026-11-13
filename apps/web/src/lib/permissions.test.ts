@@ -4,6 +4,7 @@ import {
   canEditEmploymentInfo,
   canEditIncidentReport,
   canListInactiveEmployees,
+  canManageContractors,
   canManageDepartments,
   canManageIncidentWorkflow,
   canManagePersonnelAccess,
@@ -103,6 +104,16 @@ describe("admin-only capabilities", () => {
     }
 
     expect(canManageWorksites(undefined)).toBe(false);
+  });
+
+  it("restricts contractor management to HSE managers and admins", () => {
+    for (const role of ALL_ROLES) {
+      expect(canManageContractors(role)).toBe(
+        role === "HSE_MANAGER" || role === "ADMIN",
+      );
+    }
+
+    expect(canManageContractors(undefined)).toBe(false);
   });
 });
 

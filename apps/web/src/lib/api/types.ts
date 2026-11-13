@@ -342,3 +342,117 @@ export interface SiteResponse {
   success: boolean;
   site: SiteSummary;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Contractors                                                                */
+/* -------------------------------------------------------------------------- */
+
+export interface ContractorSummary {
+  id: string;
+  name: string;
+  registrationNumber: string | null;
+  trade: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  projects: { id: string }[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContractorsResponse {
+  success: boolean;
+  contractors: ContractorSummary[];
+  pagination: ApiPagination;
+}
+
+export interface ContractorResponse {
+  success: boolean;
+  contractor: ContractorSummary;
+}
+
+export interface ContractorInput {
+  name: string;
+  registrationNumber?: string;
+  trade?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  projects?: string[];
+  isActive?: boolean;
+}
+
+export interface ContractorPersonnelSiteRef {
+  id: string;
+  name: string | null;
+}
+
+export interface ContractorPersonnelSummary {
+  id: string;
+  contractor: { id: string };
+  firstName: string;
+  lastName: string;
+  personnelId: string | null;
+  jobTitle: string | null;
+  phone: string | null;
+  email: string | null;
+  /** Legacy single-site reference, kept until the backend backfill is verified. */
+  site: { id: string } | null;
+  activeSites: ContractorPersonnelSiteRef[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContractorPersonnelListResponse {
+  success: boolean;
+  personnel: ContractorPersonnelSummary[];
+  pagination: ApiPagination;
+}
+
+export interface ContractorPersonnelResponse {
+  success: boolean;
+  personnel: ContractorPersonnelSummary;
+}
+
+export interface ContractorPersonnelInput {
+  contractorId: string;
+  firstName: string;
+  lastName: string;
+  personnelId?: string;
+  jobTitle?: string;
+  phone?: string;
+  email?: string;
+  isActive?: boolean;
+}
+
+export interface ContractorPersonnelAssignmentUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+export interface ContractorPersonnelSiteAssignmentSummary {
+  id: string;
+  personnel: { id: string };
+  contractor: { id: string };
+  site: { id: string; name: string | null; code: string | null };
+  assignedAt: string;
+  assignedBy: ContractorPersonnelAssignmentUser | null;
+  endedAt: string | null;
+  endedBy: ContractorPersonnelAssignmentUser | null;
+  isActive: boolean;
+}
+
+export interface ContractorPersonnelDetailResponse {
+  success: boolean;
+  personnel: ContractorPersonnelSummary;
+  activeAssignments: ContractorPersonnelSiteAssignmentSummary[];
+  assignmentHistory: ContractorPersonnelSiteAssignmentSummary[];
+}
+
+export interface ContractorPersonnelAssignmentResponse {
+  success: boolean;
+  assignment: ContractorPersonnelSiteAssignmentSummary;
+}
