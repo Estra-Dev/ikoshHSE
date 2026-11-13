@@ -12,8 +12,10 @@ import {
   buildContractorPersonnelCreateInput,
   buildContractorPersonnelSearchParams,
   buildContractorPersonnelUpdateInput,
+  buildContractorSelectOptions,
   buildContractorUpdateInput,
   canChangePersonnelContractor,
+  contractorOptionLabel,
   contractorToFormValues,
   filterContractors,
   getEligibleAssignmentSites,
@@ -167,6 +169,61 @@ describe("query string builders", () => {
     expect(params.has("contractorId")).toBe(false);
     expect(params.has("siteId")).toBe(false);
     expect(params.has("includeInactive")).toBe(false);
+  });
+});
+
+describe("contractor select options", () => {
+  it("always puts an empty placeholder first", () => {
+    const options = buildContractorSelectOptions(
+      [contractor(), contractor({ id: "contractor-2", name: "Prime" })],
+      "Select a contractor",
+    );
+
+    expect(options[0]).toEqual({
+      value: "",
+      label: "Select a contractor",
+    });
+    expect(options).toHaveLength(3);
+  });
+
+  it("preserves contractor IDs and labels", () => {
+    const contractors = [
+      contractor(),
+      contractor({
+        id: "contractor-2",
+        name: "Prime Scaffolding",
+        registrationNumber: "RC-200",
+        isActive: false,
+      }),
+    ];
+
+    const options = buildContractorSelectOptions(contractors);
+
+    expect(options.slice(1)).toEqual([
+      { value: "contractor-1", label: contractorOptionLabel(contractors[0]) },
+      { value: "contractor-2", label: contractorOptionLabel(contractors[1]) },
+    ]);
+    expect(options[1].value).toBe("contractor-1");
+    expect(options[2].label).toContain("(inactive)");
+  });
+
+  it("keeps a valid default contractor ID selectable", () => {
+    const contractors = [
+      contractor(),
+      contractor({ id: "contractor-2", name: "Prime Scaffolding" }),
+    ];
+    const defaultContractorId = "contractor-2";
+    const options = buildContractorSelectOptions(contractors);
+
+    expect(options.some((option) => option.value === defaultContractorId)).toBe(
+      true,
+    );
+    expect(
+      options.find((option) => option.value === defaultContractorId),
+    ).toEqual({
+      value: defaultContractorId,
+      label: contractorOptionLabel(contractors[1]),
+    });
   });
 });
 

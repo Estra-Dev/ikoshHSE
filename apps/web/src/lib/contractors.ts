@@ -142,6 +142,29 @@ export function contractorOptionLabel(contractor: ContractorSummary): string {
   return `${contractor.name}${registration}${contractor.isActive ? "" : " (inactive)"}`;
 }
 
+export interface ContractorSelectOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * Options for a controlled contractor select. The empty placeholder must
+ * always be present and first: without a matching empty option, a controlled
+ * select can display a contractor while its React state is still "".
+ */
+export function buildContractorSelectOptions(
+  contractors: readonly ContractorSummary[],
+  placeholder = "Select a contractor",
+): ContractorSelectOption[] {
+  return [
+    { value: "", label: placeholder },
+    ...contractors.map((contractor) => ({
+      value: contractor.id,
+      label: contractorOptionLabel(contractor),
+    })),
+  ];
+}
+
 /* -------------------------------------------------------------------------- */
 /* Contractor form                                                            */
 /* -------------------------------------------------------------------------- */

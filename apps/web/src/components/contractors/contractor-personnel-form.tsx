@@ -16,7 +16,7 @@ import {
   EMPTY_CONTRACTOR_PERSONNEL_FORM,
   buildContractorPersonnelCreateInput,
   buildContractorPersonnelUpdateInput,
-  contractorOptionLabel,
+  buildContractorSelectOptions,
   personnelToFormValues,
   validateContractorPersonnelForm,
   type ContractorPersonnelFormErrors,
@@ -149,10 +149,10 @@ export function ContractorPersonnelForm({
               : undefined
           }
           onChange={(event) => setField("contractorId", event.target.value)}
-          options={contractors.map((contractor) => ({
-            value: contractor.id,
-            label: contractorOptionLabel(contractor),
-          }))}
+          options={buildContractorSelectOptions(
+            contractors,
+            "Select a contractor",
+          )}
         />
         <div className="hidden sm:block" />
         <TextField
