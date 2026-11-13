@@ -47,3 +47,12 @@ export const updateContractorPersonnelSchema = z
 export type UpdateContractorPersonnelInput = z.infer<
   typeof updateContractorPersonnelSchema
 >;
+
+/** Body for adding a site assignment to existing contractor personnel. */
+export const createContractorPersonnelSiteAssignmentSchema = z.object({
+  siteId: objectIdSchema,
+});
+
+export type CreateContractorPersonnelSiteAssignmentInput = z.infer<
+  typeof createContractorPersonnelSiteAssignmentSchema
+>;

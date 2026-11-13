@@ -10,6 +10,7 @@ import {
 } from "../lib/validation/common.js";
 import {
   createContractorPersonnelSchema,
+  createContractorPersonnelSiteAssignmentSchema,
   updateContractorPersonnelSchema,
 } from "../lib/validation/contractor-personnel.js";
 import {
@@ -20,13 +21,27 @@ import { requireIkoshRole } from "../middleware/require-ikosh-role.js";
 import { isHseManagementRole } from "../lib/ikosh-constants.js";
 import { assertSiteAccess, siteScopeFilter } from "../lib/site-access.js";
 import { runAuditedMutation } from "../lib/audit-log.js";
-import { contractorPersonnelAuditSnapshot } from "../lib/audit-snapshots.js";
+import {
+  contractorPersonnelAuditSnapshot,
+  contractorPersonnelSiteAssignmentAuditSnapshot,
+} from "../lib/audit-snapshots.js";
 import { ContractorPersonnel } from "../models/ContractorPersonnel.js";
+import { ContractorPersonnelSiteAssignment } from "../models/ContractorPersonnelSiteAssignment.js";
 import { Contractor } from "../models/Contractor.js";
 import { Site } from "../models/Site.js";
-import { toContractorPersonnelSummary } from "../serializers/contractor-personnel.js";
+import {
+  toContractorPersonnelSiteAssignmentSummary,
+  toContractorPersonnelSummary,
+} from "../serializers/contractor-personnel.js";
+import { assertAssignableSite } from "../lib/contractor-personnel-assignments.js";
 
 const router: Router = Router();
+
+const ASSIGNMENT_POPULATE = [
+  { path: "site", select: "name code" },
+  { path: "assignedBy", select: "firstName lastName" },
+  { path: "endedBy", select: "firstName lastName" },
+];
 
 function isDuplicateKeyError(error: unknown): boolean {
   return (
@@ -104,6 +119,170 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
     },
   });
 });
+
+// Contractor personnel detail with active site deployments and full
+// assignment history (HSE_MANAGER + ADMIN only).
+router.get(
+  "/:id",
+  requireIkoshRole("ADMIN", "HSE_MANAGER"),
+  async (req: Request, res: Response): Promise<void> => {
+    const personnelId = parseObjectIdParam(req.params.id, "personnel");
+
+    const personnel = await ContractorPersonnel.findById(personnelId)
+      .populate("contractor", "name")
+      .lean();
+
+    if (!personnel) {
+      throw new HttpError(404, "Contractor personnel not found.");
+    }
+
+    const assignments = await ContractorPersonnelSiteAssignment.find({
+      personnel: personnelId,
+    })
+      .sort({ assignedAt: -1 })
+      .populate(ASSIGNMENT_POPULATE)
+      .lean();
+
+    const serializedAssignments = assignments.map(
+      toContractorPersonnelSiteAssignmentSummary,
+    );
+
+    res.status(200).json({
+      success: true,
+      personnel: toContractorPersonnelSummary(personnel),
+      activeAssignments: serializedAssignments.filter(
+        (assignment) => assignment.isActive,
+      ),
+      assignmentHistory: serializedAssignments,
+    });
+  },
+);
+
+// Add a site assignment for contractor personnel (HSE_MANAGER + ADMIN only).
+router.post(
+  "/:id/assignments",
+  requireIkoshRole("ADMIN", "HSE_MANAGER"),
+  async (req: Request, res: Response): Promise<void> => {
+    const personnelId = parseObjectIdParam(req.params.id, "personnel");
+
+    const parsed = createContractorPersonnelSiteAssignmentSchema.safeParse(
+      req.body,
+    );
+    if (!parsed.success) {
+      throw new HttpError(400, firstValidationIssue(parsed.error));
+    }
+
+    const viewer = getIkoshUser(req);
+
+    const assignment = await runAuditedMutation(
+      viewer._id,
+      async (session) => {
+        const { personnel, contractor, site } = await assertAssignableSite({
+          personnelId,
+          siteId: parsed.data.siteId,
+          session,
+        });
+
+        const created = new ContractorPersonnelSiteAssignment({
+          personnel: personnel._id,
+          contractor: contractor._id,
+          site: site._id,
+          assignedAt: new Date(),
+          assignedBy: viewer._id,
+          isActive: true,
+        });
+
+        try {
+          await created.save({ session });
+        } catch (error) {
+          if (isDuplicateKeyError(error)) {
+            throw new HttpError(
+              409,
+              "This personnel already has an active assignment to this site.",
+            );
+          }
+          throw error;
+        }
+
+        return {
+          result: created,
+          audit: {
+            action: "contractor_personnel.site_assigned",
+            entityType: "ContractorPersonnelSiteAssignment",
+            entityId: created._id,
+            after: contractorPersonnelSiteAssignmentAuditSnapshot(created),
+          },
+        };
+      },
+    );
+
+    await assignment.populate(ASSIGNMENT_POPULATE);
+
+    res.status(201).json({
+      success: true,
+      assignment: toContractorPersonnelSiteAssignmentSummary(assignment),
+    });
+  },
+);
+
+// End a site assignment without deleting its history (HSE_MANAGER + ADMIN only).
+router.delete(
+  "/:id/assignments/:assignmentId",
+  requireIkoshRole("ADMIN", "HSE_MANAGER"),
+  async (req: Request, res: Response): Promise<void> => {
+    const personnelId = parseObjectIdParam(req.params.id, "personnel");
+    const assignmentId = parseObjectIdParam(
+      req.params.assignmentId,
+      "assignment",
+    );
+
+    const viewer = getIkoshUser(req);
+
+    const assignment = await runAuditedMutation(
+      viewer._id,
+      async (session) => {
+        const current = await ContractorPersonnelSiteAssignment.findOne({
+          _id: assignmentId,
+          personnel: personnelId,
+        }).session(session);
+
+        if (!current) {
+          throw new HttpError(404, "Assignment not found.");
+        }
+
+        if (!current.isActive) {
+          throw new HttpError(409, "This assignment has already ended.");
+        }
+
+        const before = contractorPersonnelSiteAssignmentAuditSnapshot(current);
+
+        current.isActive = false;
+        current.endedAt = new Date();
+        current.endedBy = viewer._id;
+
+        await current.save({ session });
+
+        return {
+          result: current,
+          audit: {
+            action: "contractor_personnel.site_unassigned",
+            entityType: "ContractorPersonnelSiteAssignment",
+            entityId: current._id,
+            before,
+            after: contractorPersonnelSiteAssignmentAuditSnapshot(current),
+          },
+        };
+      },
+    );
+
+    await assignment.populate(ASSIGNMENT_POPULATE);
+
+    res.status(200).json({
+      success: true,
+      assignment: toContractorPersonnelSiteAssignmentSummary(assignment),
+    });
+  },
+);
 
 // Create a contractor personnel (HSE_MANAGER + ADMIN only).
 router.post(

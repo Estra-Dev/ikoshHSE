@@ -1,5 +1,6 @@
 import type { ContractorDocument } from "../models/Contractor.js";
 import type { ContractorPersonnelDocument } from "../models/ContractorPersonnel.js";
+import type { ContractorPersonnelSiteAssignmentDocument } from "../models/ContractorPersonnelSiteAssignment.js";
 import type { DepartmentDocument } from "../models/Department.js";
 import type { AttachmentDocument } from "../models/Attachment.js";
 import type { IncidentDocument } from "../models/Incident.js";
@@ -107,6 +108,26 @@ export function contractorPersonnelAuditSnapshot(
     jobTitle: personnel.jobTitle ?? null,
     site: idOf(personnel.site),
     isActive: personnel.isActive,
+  };
+}
+
+/**
+ * Assignment snapshots capture the deployment relationship and both the
+ * creation and ending responsibility trail. Legacy backfilled rows may have
+ * null `assignedBy`/`endedBy`.
+ */
+export function contractorPersonnelSiteAssignmentAuditSnapshot(
+  assignment: WithId<ContractorPersonnelSiteAssignmentDocument>,
+): Record<string, unknown> {
+  return {
+    personnel: idOf(assignment.personnel),
+    contractor: idOf(assignment.contractor),
+    site: idOf(assignment.site),
+    assignedAt: dateOf(assignment.assignedAt),
+    assignedBy: idOf(assignment.assignedBy),
+    endedAt: dateOf(assignment.endedAt),
+    endedBy: idOf(assignment.endedBy),
+    isActive: assignment.isActive,
   };
 }
 

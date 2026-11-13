@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "promote-admin": "tsx scripts/promote-admin.ts",
-    "migrate-departments": "tsx scripts/migrate-departments.ts"
+    "migrate-departments": "tsx scripts/migrate-departments.ts",
+    "backfill-contractor-personnel-site-assignments": "tsx scripts/backfill-contractor-personnel-site-assignments.ts"
   },
   "dependencies": {
     "@digit-auth/node": "0.1.1",
