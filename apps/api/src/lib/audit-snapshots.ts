@@ -3,6 +3,7 @@ import type { ContractorPersonnelDocument } from "../models/ContractorPersonnel.
 import type { ContractorPersonnelSiteAssignmentDocument } from "../models/ContractorPersonnelSiteAssignment.js";
 import type { DepartmentDocument } from "../models/Department.js";
 import type { AttachmentDocument } from "../models/Attachment.js";
+import type { CorrectiveActionDocument } from "../models/CorrectiveAction.js";
 import type { IncidentDocument } from "../models/Incident.js";
 import type { ProjectDocument } from "../models/Project.js";
 import type { SiteDocument } from "../models/Site.js";
@@ -164,5 +165,28 @@ export function incidentAuditSnapshot(
     status: incident.status,
     classifiedBy: idOf(incident.classifiedBy),
     statusUpdatedBy: idOf(incident.statusUpdatedBy),
+  };
+}
+
+/**
+ * Corrective action snapshots record ownership and workflow metadata only.
+ * Action descriptions and completion/verification notes are free text and are
+ * deliberately excluded.
+ */
+export function correctiveActionAuditSnapshot(
+  action: WithId<CorrectiveActionDocument>,
+): Record<string, unknown> {
+  return {
+    source: action.source,
+    incident: idOf(action.incident),
+    project: idOf(action.project),
+    site: idOf(action.site),
+    assignedTo: idOf(action.assignedTo),
+    dueDate: dateOf(action.dueDate),
+    status: action.status,
+    completedBy: idOf(action.completedBy),
+    completedAt: dateOf(action.completedAt),
+    verifiedBy: idOf(action.verifiedBy),
+    verifiedAt: dateOf(action.verifiedAt),
   };
 }

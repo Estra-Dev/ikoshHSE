@@ -20,6 +20,11 @@ import {
 } from "../middleware/attach-ikosh-user.js";
 import { requireIkoshRole } from "../middleware/require-ikosh-role.js";
 import { isHseManagementRole } from "../lib/ikosh-constants.js";
+import { canViewCorrectiveActions } from "../lib/hse-permissions.js";
+import {
+  canAccessCorrectiveAction,
+  canUploadCorrectiveActionEvidence,
+} from "../lib/corrective-action-access.js";
 import {
   isSiteAssigned,
   assertSiteAccess,
@@ -38,6 +43,7 @@ import {
   sha256Hex,
 } from "../lib/attachments/storage.js";
 import { Attachment } from "../models/Attachment.js";
+import { CorrectiveAction } from "../models/CorrectiveAction.js";
 import { Incident } from "../models/Incident.js";
 import { Site } from "../models/Site.js";
 import { toAttachmentSummary } from "../serializers/attachment.js";
@@ -89,7 +95,7 @@ router.use(requireAuth(digitAuth), attachIkoshUser);
  */
 async function assertAttachmentEntityAccess(
   session: ClientSession,
-  viewer: SiteScopedViewer,
+  viewer: SiteScopedViewer & { _id: unknown },
   entityType: string | null,
   entityId: unknown,
 ): Promise<void> {
@@ -119,6 +125,36 @@ async function assertAttachmentEntityAccess(
     return;
   }
 
+  if (entityType === "corrective_action") {
+    const action = await CorrectiveAction.findById(entityId).session(session);
+
+    if (!action) {
+      throw new HttpError(404, "Specified corrective action was not found.");
+    }
+
+    if (!canUploadCorrectiveActionEvidence(viewer, action)) {
+      // Distinguish a closed action from an unauthorized caller without
+      // leaking status: the status-free check below only succeeds for
+      // management, the creator or the assignee.
+      if (
+        action.status === "VERIFIED" &&
+        canUploadCorrectiveActionEvidence(viewer, {
+          createdBy: action.createdBy,
+          assignedTo: action.assignedTo,
+        })
+      ) {
+        throw new HttpError(
+          409,
+          "Evidence cannot be added to a verified corrective action.",
+        );
+      }
+
+      throw new HttpError(404, "Specified corrective action was not found.");
+    }
+
+    return;
+  }
+
   throw new HttpError(400, "Unsupported attachment entity type.");
 }
 
@@ -136,8 +172,20 @@ async function buildVisibleAttachmentFilter(
     assignedSites.length > 0
       ? await Incident.distinct("_id", { site: { $in: assignedSites } })
       : [];
+  const canViewActions = canViewCorrectiveActions(viewer.ikoshRole);
+  const actionScope = {
+    $or: [
+      { assignedTo: viewer._id as Types.ObjectId },
+      { site: { $in: assignedSites } },
+    ],
+  };
+  const correctiveActionIds = canViewActions
+    ? (await CorrectiveAction.find(actionScope).lean()).map(
+        (action) => action._id,
+      )
+    : [];
 
-  return {
+  const filter: Record<string, unknown> = {
     $or: [
       { uploadedBy: viewer._id },
       { entityType: "site", entityId: { $in: assignedSites } },
@@ -145,8 +193,20 @@ async function buildVisibleAttachmentFilter(
         entityType: "incident",
         entityId: { $in: incidentIds },
       },
+      {
+        entityType: "corrective_action",
+        entityId: { $in: correctiveActionIds },
+      },
     ],
   };
+
+  // Ordinary employees have no CAPA access, even if they happen to have
+  // uploaded a file that was later linked to a corrective action.
+  if (!canViewActions) {
+    filter.$and = [{ entityType: { $ne: "corrective_action" } }];
+  }
+
+  return filter;
 }
 
 // List attachments. HSE management sees everything; everyone else sees their
@@ -358,13 +418,32 @@ router.get(
     }
 
     const viewer = getIkoshUser(req);
+    const isManagement = isHseManagementRole(viewer.ikoshRole);
     const isOwner = String(attachment.uploadedBy) === String(viewer._id);
 
-    if (!isHseManagementRole(viewer.ikoshRole) && !isOwner) {
-      let siteId: unknown = null;
+    if (!isManagement && attachment.entityType === "corrective_action") {
+      // CAPA evidence visibility follows the action, not file ownership:
+      // ordinary employees and unrelated HSE staff must not read it.
+      let allowed = false;
+
+      if (canViewCorrectiveActions(viewer.ikoshRole) && attachment.entityId) {
+        const action = await CorrectiveAction.findById(attachment.entityId)
+          .select("assignedTo site")
+          .lean();
+
+        if (action) {
+          allowed = canAccessCorrectiveAction(viewer, action);
+        }
+      }
+
+      if (!allowed) {
+        throw new HttpError(404, "Attachment not found.");
+      }
+    } else if (!isManagement && !isOwner) {
+      let allowed = false;
 
       if (attachment.entityType === "site") {
-        siteId = attachment.entityId;
+        allowed = isSiteAssigned(viewer, attachment.entityId);
       } else if (
         attachment.entityType === "incident" &&
         attachment.entityId
@@ -372,10 +451,13 @@ router.get(
         const incident = await Incident.findById(attachment.entityId)
           .select("site")
           .lean();
-        siteId = incident?.site ?? null;
+
+        if (incident) {
+          allowed = isSiteAssigned(viewer, incident.site);
+        }
       }
 
-      if (!siteId || !isSiteAssigned(viewer, siteId)) {
+      if (!allowed) {
         throw new HttpError(404, "Attachment not found.");
       }
     }

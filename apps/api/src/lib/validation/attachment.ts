@@ -20,8 +20,12 @@ export type AllowedMimeType = (typeof ALLOWED_MIME_TYPES)[number];
 
 export const attachmentSizeLimit = 10 * 1024 * 1024; // 10MB
 
-/** Entity types an attachment may be linked to in Phase 1. */
-export const ATTACHMENT_ENTITY_TYPES = ["site", "incident"] as const;
+/** Entity types an attachment may be linked to. */
+export const ATTACHMENT_ENTITY_TYPES = [
+  "site",
+  "incident",
+  "corrective_action",
+] as const;
 
 export type AttachmentEntityType = (typeof ATTACHMENT_ENTITY_TYPES)[number];
 

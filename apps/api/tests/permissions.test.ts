@@ -15,14 +15,23 @@ import {
 
 const EXPECTED: Record<IkoshRole, readonly HseCapability[]> = {
   EMPLOYEE: ["reportIncident"],
-  SUPERVISOR: ["reportIncident"],
-  HSE_OFFICER: ["reportIncident"],
+  SUPERVISOR: ["reportIncident", "viewCorrectiveActions"],
+  HSE_OFFICER: [
+    "reportIncident",
+    "viewCorrectiveActions",
+    "createCorrectiveActions",
+    "progressCorrectiveActions",
+  ],
   HSE_MANAGER: [
     "reportIncident",
     "viewAllSites",
     "manageHseRecords",
     "classifyIncidents",
     "progressIncidentStatus",
+    "viewCorrectiveActions",
+    "createCorrectiveActions",
+    "manageCorrectiveActions",
+    "progressCorrectiveActions",
     "viewAuditLog",
   ],
   ADMIN: HSE_CAPABILITIES,

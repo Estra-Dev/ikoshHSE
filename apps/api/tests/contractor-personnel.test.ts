@@ -417,7 +417,7 @@ describe("contractor personnel API", () => {
     );
   });
 
-  it("blocks deletion while a site is assigned", async () => {
+  it("preserves personnel and assignment history after an assignment ends", async () => {
     const project = await createProject();
     const site = await createSite(project._id);
     const contractor = await createContractor();
@@ -459,12 +459,28 @@ describe("contractor personnel API", () => {
       .delete(`/api/contractor-personnel/${assignedPersonnel._id}`)
       .set("Authorization", authorization);
 
-    expect(deletedAfterEnd.status).toBe(200);
+    expect(deletedAfterEnd.status).toBe(409);
+    expect(deletedAfterEnd.body.message).toContain("assignment history");
+
+    const preservedPersonnel = await ContractorPersonnel.findById(
+      assignedPersonnel._id,
+    );
+    const preservedAssignment = await ContractorPersonnelSiteAssignment.findById(
+      assignment._id,
+    );
+
+    expect(preservedPersonnel).not.toBeNull();
+    expect(preservedAssignment).not.toBeNull();
+    expect(preservedAssignment?.isActive).toBe(false);
+    expect(preservedAssignment?.endedAt).toBeInstanceOf(Date);
 
     const deleted = await request(testApp)
       .delete(`/api/contractor-personnel/${unassignedPersonnel._id}`)
       .set("Authorization", authorization);
 
     expect(deleted.status).toBe(200);
+    expect(
+      await ContractorPersonnel.findById(unassignedPersonnel._id),
+    ).toBeNull();
   });
 });

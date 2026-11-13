@@ -12,6 +12,10 @@ export const HSE_CAPABILITIES = [
   "manageHseRecords",
   "classifyIncidents",
   "progressIncidentStatus",
+  "viewCorrectiveActions",
+  "createCorrectiveActions",
+  "manageCorrectiveActions",
+  "progressCorrectiveActions",
   "viewAuditLog",
   "manageEmployees",
   "manageDepartments",
@@ -21,14 +25,23 @@ export type HseCapability = (typeof HSE_CAPABILITIES)[number];
 
 const ROLE_MATRIX: Record<IkoshRole, readonly HseCapability[]> = {
   EMPLOYEE: ["reportIncident"],
-  SUPERVISOR: ["reportIncident"],
-  HSE_OFFICER: ["reportIncident"],
+  SUPERVISOR: ["reportIncident", "viewCorrectiveActions"],
+  HSE_OFFICER: [
+    "reportIncident",
+    "viewCorrectiveActions",
+    "createCorrectiveActions",
+    "progressCorrectiveActions",
+  ],
   HSE_MANAGER: [
     "reportIncident",
     "viewAllSites",
     "manageHseRecords",
     "classifyIncidents",
     "progressIncidentStatus",
+    "viewCorrectiveActions",
+    "createCorrectiveActions",
+    "manageCorrectiveActions",
+    "progressCorrectiveActions",
     "viewAuditLog",
   ],
   ADMIN: HSE_CAPABILITIES,
@@ -60,6 +73,22 @@ export function canClassifyIncidents(role: string): boolean {
 
 export function canProgressIncidentStatus(role: string): boolean {
   return hasHsePermission(role, "progressIncidentStatus");
+}
+
+export function canViewCorrectiveActions(role: string): boolean {
+  return hasHsePermission(role, "viewCorrectiveActions");
+}
+
+export function canCreateCorrectiveActions(role: string): boolean {
+  return hasHsePermission(role, "createCorrectiveActions");
+}
+
+export function canManageCorrectiveActions(role: string): boolean {
+  return hasHsePermission(role, "manageCorrectiveActions");
+}
+
+export function canProgressCorrectiveActions(role: string): boolean {
+  return hasHsePermission(role, "progressCorrectiveActions");
 }
 
 export function canViewAuditLog(role: string): boolean {

@@ -214,6 +214,24 @@ export async function hasActiveAssignmentsForPersonnel(
 }
 
 /**
+ * True when personnel have any assignment history, active or ended.
+ *
+ * Deletion must preserve deployment history, so this deliberately ignores
+ * `isActive`. Use `hasActiveAssignmentsForPersonnel` for rules that only care
+ * about current deployments (such as changing contractor).
+ */
+export async function hasAnyAssignmentsForPersonnel(
+  personnelId: Types.ObjectId,
+  session?: ClientSession,
+): Promise<boolean> {
+  const assignment = await ContractorPersonnelSiteAssignment.exists({
+    personnel: personnelId,
+  }).session(session ?? null);
+
+  return assignment !== null;
+}
+
+/**
  * True when removing any of the given projects would strand active personnel
  * assignments at that project's sites.
  *

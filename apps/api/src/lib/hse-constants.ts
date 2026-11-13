@@ -218,3 +218,86 @@ export function isWasteType(value: unknown): value is WasteType {
     (WASTE_TYPES as readonly string[]).includes(value)
   );
 }
+
+/**
+ * Corrective action origin. Incident and near-miss sources must reference the
+ * originating report so provenance can never be rewritten later.
+ */
+export const CORRECTIVE_ACTION_SOURCES = [
+  "INCIDENT",
+  "NEAR_MISS",
+  "HSE_OBSERVATION",
+  "OTHER",
+] as const;
+
+export type CorrectiveActionSource =
+  (typeof CORRECTIVE_ACTION_SOURCES)[number];
+
+export function isCorrectiveActionSource(
+  value: unknown,
+): value is CorrectiveActionSource {
+  return (
+    typeof value === "string" &&
+    (CORRECTIVE_ACTION_SOURCES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Corrective action workflow. Actions start OPEN and move forward through
+ * IN_PROGRESS and COMPLETED to VERIFIED; there is no reopen flow in the MVP.
+ */
+export const CORRECTIVE_ACTION_STATUSES = [
+  "OPEN",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "VERIFIED",
+] as const;
+
+export type CorrectiveActionStatus =
+  (typeof CORRECTIVE_ACTION_STATUSES)[number];
+
+export function isCorrectiveActionStatus(
+  value: unknown,
+): value is CorrectiveActionStatus {
+  return (
+    typeof value === "string" &&
+    (CORRECTIVE_ACTION_STATUSES as readonly string[]).includes(value)
+  );
+}
+
+export const CORRECTIVE_ACTION_STATUS_TRANSITIONS: Record<
+  CorrectiveActionStatus,
+  readonly CorrectiveActionStatus[]
+> = {
+  OPEN: ["IN_PROGRESS"],
+  IN_PROGRESS: ["COMPLETED"],
+  COMPLETED: ["VERIFIED"],
+  VERIFIED: [],
+};
+
+export function canTransitionCorrectiveActionStatus(
+  from: CorrectiveActionStatus,
+  to: CorrectiveActionStatus,
+): boolean {
+  return CORRECTIVE_ACTION_STATUS_TRANSITIONS[from].includes(to);
+}
+
+/** Roles that may be assigned responsibility for a corrective action. */
+export const CORRECTIVE_ACTION_ASSIGNABLE_ROLES = [
+  "SUPERVISOR",
+  "HSE_OFFICER",
+  "HSE_MANAGER",
+  "ADMIN",
+] as const;
+
+export type CorrectiveActionAssignableRole =
+  (typeof CORRECTIVE_ACTION_ASSIGNABLE_ROLES)[number];
+
+export function isCorrectiveActionAssignableRole(
+  value: unknown,
+): value is CorrectiveActionAssignableRole {
+  return (
+    typeof value === "string" &&
+    (CORRECTIVE_ACTION_ASSIGNABLE_ROLES as readonly string[]).includes(value)
+  );
+}

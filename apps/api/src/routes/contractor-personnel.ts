@@ -36,6 +36,7 @@ import {
 import {
   assertAssignableSite,
   hasActiveAssignmentsForPersonnel,
+  hasAnyAssignmentsForPersonnel,
   personnelIdsAssignedToSites,
 } from "../lib/contractor-personnel-assignments.js";
 
@@ -577,15 +578,15 @@ router.delete(
         throw new HttpError(404, "Contractor personnel not found.");
       }
 
-      const hasActiveAssignments = await hasActiveAssignmentsForPersonnel(
+      const hasAssignmentHistory = await hasAnyAssignmentsForPersonnel(
         personnel._id,
         session,
       );
 
-      if (personnel.site || hasActiveAssignments) {
+      if (personnel.site || hasAssignmentHistory) {
         throw new HttpError(
           409,
-          "Cannot delete personnel with active site assignments. End the assignments and resolve the legacy site reference first.",
+          "Cannot delete personnel with site assignment history. Assignment records are retained permanently; deactivate the personnel record instead.",
         );
       }
 
