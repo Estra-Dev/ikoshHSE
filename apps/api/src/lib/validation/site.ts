@@ -24,7 +24,7 @@ export const updateSiteSchema = z
     projectId: objectIdSchema.optional(),
     name: trimmedNonEmptyString(120).optional(),
     code: siteCodeSchema.optional(),
-    location: trimmedNonEmptyString(150).optional(),
+    location: trimmedNonEmptyString(150).nullable().optional(),
     description: z.string().trim().max(1000).optional(),
     status: z.custom<SiteStatus>(isSiteStatus).optional(),
   })

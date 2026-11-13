@@ -10,6 +10,7 @@ import {
 import { useApi } from "./client";
 import type {
   HseDashboardResponse,
+  HseReferenceResponse,
   IncidentType,
   IncidentsResponse,
 } from "./types";
@@ -19,6 +20,7 @@ export const hseKeys = {
   dashboardRoot: ["hse", "dashboard"] as const,
   dashboard: (filters: DashboardScopeFilters) =>
     [...hseKeys.dashboardRoot, filters] as const,
+  reference: () => [...hseKeys.all, "reference"] as const,
   incidentsRoot: ["hse", "incidents"] as const,
   recentIncidents: (query: {
     siteId: string;
@@ -102,5 +104,19 @@ export function useRecentIncidents({
         buildIncidentListSearchParams({ siteId, type, limit }),
       ),
     enabled,
+  });
+}
+
+/**
+ * Read-only HSE reference lists. The values are stable server constants, so
+ * they are cached for the session instead of refetched on every panel mount.
+ */
+export function useHseReference() {
+  const api = useApi();
+
+  return useQuery({
+    queryKey: hseKeys.reference(),
+    queryFn: () => api.get<HseReferenceResponse>("/api/hse/reference"),
+    staleTime: 60 * 60 * 1000,
   });
 }

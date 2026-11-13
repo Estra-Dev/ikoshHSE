@@ -14,11 +14,10 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ArrowLeftIcon } from "@/components/icons";
 import {
   formatEnum,
-  formatProfileDate,
-  ProfileField,
   SectionCard,
 } from "@/components/employees/profile-section";
 import { useMe, useUpdateOwnProfile } from "@/lib/api/employees";
+import { useSites } from "@/lib/api/worksites";
 import type { EmployeeFull } from "@/lib/api/types";
 
 function formatName(employee: EmployeeFull): string {
@@ -66,9 +65,7 @@ function ContactForm({ employee }: { employee: EmployeeFull }) {
 
   return (
     <section className="rounded-card border border-line bg-surface p-6 shadow-card">
-      <h2 className="text-sm font-semibold text-ink">
-        Contact details
-      </h2>
+      <h2 className="text-sm font-semibold text-ink">Contact details</h2>
       <p className="mt-1 text-sm leading-6 text-muted">
         Update your own phone number and location. Other profile fields are
         managed by IKOSH administrators.
@@ -108,9 +105,7 @@ function ContactForm({ employee }: { employee: EmployeeFull }) {
           )}
 
           {!updateProfile.isError && feedback && (
-            <p className="text-sm text-emerald-700">
-              {feedback}
-            </p>
+            <p className="text-sm text-emerald-700">{feedback}</p>
           )}
         </div>
       </form>
@@ -120,6 +115,7 @@ function ContactForm({ employee }: { employee: EmployeeFull }) {
 
 export default function MyProfilePage() {
   const me = useMe();
+  const sitesQuery = useSites();
 
   if (me.isLoading) {
     return <Spinner label="Loading your profile..." />;
@@ -135,17 +131,21 @@ export default function MyProfilePage() {
   }
 
   const employee = me.data.employee;
+  const siteMap = new Map(sitesQuery.data?.sites.map((s) => [s.id, s.name]));
+  const assignedSiteNames = employee.assignedSites
+    .map((id) => siteMap.get(id))
+    .filter((name): name is string => Boolean(name));
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="People"
-        title="My profile"
-        description="Your IKOSH employee record as stored in the directory."
+        eyebrow="HSE"
+        title="My HSE Profile"
+        description="Your IKOSH HSE identity and access information."
         actions={
-          <Link href="/employees" className={buttonStyles("secondary", "sm")}>
+          <Link href="/dashboard" className={buttonStyles("secondary", "sm")}>
             <ArrowLeftIcon size={16} />
-            Back to directory
+            Back to HSE dashboard
           </Link>
         }
       />
@@ -174,36 +174,30 @@ export default function MyProfilePage() {
 
       <ContactForm key={employee.updatedAt} employee={employee} />
 
-      <SectionCard
-        title="Employment information"
-        description="Managed by IKOSH administrators. Contact HR if anything needs correcting."
-      >
-        <ProfileField label="Employee ID" value={employee.employeeId ?? "—"} />
-        <ProfileField
-          label="Employment type"
-          value={formatEnum(employee.employmentType)}
-        />
-        <ProfileField
-          label="Hire date"
-          value={formatProfileDate(employee.hireDate)}
-        />
-        <ProfileField
-          label="Department"
-          value={employee.department?.name ?? "—"}
-        />
-        <ProfileField
-          label="Manager"
-          value={
-            employee.manager
-              ? `${employee.manager.firstName} ${employee.manager.lastName}`
-              : "—"
-          }
-        />
-        <ProfileField
-          label="Record created"
-          value={formatProfileDate(employee.createdAt)}
-        />
-      </SectionCard>
+      {assignedSiteNames.length > 0 && (
+        <SectionCard
+          title="Assigned sites"
+          description="Sites you have access to for HSE reporting."
+        >
+          {sitesQuery.isLoading ? (
+            <p className="text-sm text-muted">Loading assigned sites...</p>
+          ) : sitesQuery.isError ? (
+            <p className="text-sm text-red-600">
+              Unable to load site details. Your profile is still available.
+            </p>
+          ) : assignedSiteNames.length > 0 ? (
+            <ul className="list-disc pl-5 text-sm">
+              {assignedSiteNames.map((name) => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted">
+              You currently have no sites assigned.
+            </p>
+          )}
+        </SectionCard>
+      )}
     </div>
   );
 }

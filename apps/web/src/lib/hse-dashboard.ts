@@ -38,7 +38,7 @@ export interface DashboardScopeFilters {
 }
 
 export const EMPTY_DASHBOARD_FILTERS: DashboardScopeFilters = {
-  range: "30d",
+  range: "all",
   projectId: "",
   siteId: "",
 };
@@ -132,14 +132,20 @@ export function buildProjectListSearchParams(limit = 100): URLSearchParams {
 export function buildSiteListSearchParams({
   projectId = "",
   limit = 100,
+  includeInactive = false,
 }: {
   projectId?: string;
   limit?: number;
+  includeInactive?: boolean;
 } = {}): URLSearchParams {
   const searchParams = new URLSearchParams();
 
   if (projectId) {
     searchParams.set("projectId", projectId);
+  }
+
+  if (includeInactive) {
+    searchParams.set("includeInactive", "true");
   }
 
   searchParams.set("limit", String(limit));
@@ -175,8 +181,7 @@ export function deriveDashboardKpis(
     incidents: Math.max(0, totalReports - nearMisses),
     nearMisses,
     openCases:
-      (incidents.byStatus.REPORTED ?? 0) +
-      (incidents.byStatus.TRIAGED ?? 0),
+      (incidents.byStatus.REPORTED ?? 0) + (incidents.byStatus.TRIAGED ?? 0),
     unclassified: incidents.unclassified,
     closedCases: incidents.byStatus.CLOSED ?? 0,
     totalReports,

@@ -3,7 +3,7 @@ import { Types } from "mongoose";
 import { requireAuth } from "@digit-auth/node";
 import { digitAuth } from "../lib/digit-auth.js";
 import { HttpError } from "../lib/http-error.js";
-import { isManagementRole } from "../lib/ikosh-constants.js";
+import { isHseManagementRole, isManagementRole } from "../lib/ikosh-constants.js";
 import {
   firstValidationIssue,
   parseObjectIdParam,
@@ -14,6 +14,7 @@ import {
   employeeDirectoryQuerySchema,
   updateEmployeeRoleSchema,
   updateEmployeeSchema,
+  updateEmployeeSitesSchema,
   updateEmployeeStatusSchema,
   updateOwnProfileSchema,
 } from "../lib/validation/employee.js";
@@ -25,8 +26,13 @@ import { requireIkoshRole } from "../middleware/require-ikosh-role.js";
 import { runAuditedMutation } from "../lib/audit-log.js";
 import { employeeAuditSnapshot } from "../lib/audit-snapshots.js";
 import { Department } from "../models/Department.js";
+import { Site } from "../models/Site.js";
 import { User } from "../models/User.js";
-import { toBasicUserProfile, toFullUserProfile } from "../serializers/user.js";
+import {
+  toBasicUserProfile,
+  toFullUserProfile,
+  toHsePersonnelSummary,
+} from "../serializers/user.js";
 
 const router: Router = Router();
 
@@ -105,6 +111,10 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
     filter.employmentType = query.employmentType;
   }
 
+  if (query.siteId) {
+    filter.assignedSites = new Types.ObjectId(query.siteId);
+  }
+
   const [total, employees] = await Promise.all([
     User.countDocuments(filter),
     User.find(filter)
@@ -115,9 +125,17 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
       .populate({ path: "department", select: "name" }),
   ]);
 
+  // HSE managers need role, active status and site assignments to administer
+  // access. Everyone else keeps the basic, HR-free directory view.
+  const isAccessManager = isHseManagementRole(viewer.ikoshRole);
+
   res.status(200).json({
     success: true,
-    employees: employees.map((employee) => toBasicUserProfile(employee)),
+    employees: employees.map((employee) =>
+      isAccessManager
+        ? toHsePersonnelSummary(employee)
+        : toBasicUserProfile(employee),
+    ),
     pagination: {
       page: query.page,
       limit: query.limit,
@@ -449,6 +467,88 @@ router.patch(
           result: employee,
           audit: {
             action: "employee.status_changed",
+            entityType: "User",
+            entityId: employee._id,
+            before,
+            after: employeeAuditSnapshot(employee),
+          },
+        };
+      },
+    );
+
+    await employee.populate(POPULATE_EMPLOYEE_FIELDS);
+
+    res.status(200).json({
+      success: true,
+      employee: toFullUserProfile(employee),
+    });
+  },
+);
+
+// Replace an employee's site assignments (HSE_MANAGER + ADMIN only). Site
+// assignments drive all non-management HSE access, so every change is
+// validated, deduplicated and audited with before/after values. The payload
+// is strict: roles, status and employment fields cannot be changed here.
+router.patch(
+  "/:id/sites",
+  requireIkoshRole("ADMIN", "HSE_MANAGER"),
+  async (req: Request, res: Response): Promise<void> => {
+    const employeeId = parseObjectIdParam(req.params.id, "employee");
+
+    const parsed = updateEmployeeSitesSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      throw new HttpError(400, firstValidationIssue(parsed.error));
+    }
+
+    const viewer = getIkoshUser(req);
+    const requestedSiteIds = [...new Set(parsed.data.siteIds)];
+
+    const employee = await runAuditedMutation(
+      viewer._id,
+      async (session) => {
+        const employee = await User.findById(employeeId).session(session);
+
+        if (!employee) {
+          throw new HttpError(404, "Employee not found.");
+        }
+
+        const before = employeeAuditSnapshot(employee);
+
+        if (requestedSiteIds.length > 0) {
+          const sites = await Site.find({ _id: { $in: requestedSiteIds } })
+            .select("_id status")
+            .session(session)
+            .lean();
+
+          if (sites.length !== requestedSiteIds.length) {
+            throw new HttpError(
+              400,
+              "One or more specified sites were not found.",
+            );
+          }
+
+          if (sites.some((site) => site.status !== "ACTIVE")) {
+            throw new HttpError(
+              400,
+              "Only active sites can be assigned to HSE personnel.",
+            );
+          }
+        }
+
+        // Stable ordering keeps audit snapshots comparable across changes.
+        employee.assignedSites = requestedSiteIds
+          .map((siteId) => new Types.ObjectId(siteId))
+          .sort((left, right) =>
+            String(left).localeCompare(String(right)),
+          );
+
+        await employee.save({ session });
+
+        return {
+          result: employee,
+          audit: {
+            action: "employee.sites_changed",
             entityType: "User",
             entityId: employee._id,
             before,

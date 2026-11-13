@@ -66,6 +66,27 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
   });
 });
 
+// Project detail. Non-management viewers see only active projects; HSE
+// management can also open planned, on-hold, completed or cancelled projects.
+router.get("/:id", async (req: Request, res: Response): Promise<void> => {
+  const projectId = parseObjectIdParam(req.params.id, "project");
+  const viewer = getIkoshUser(req);
+
+  const project = await Project.findById(projectId).lean();
+
+  if (
+    !project ||
+    (project.status !== "ACTIVE" && !isHseManagementRole(viewer.ikoshRole))
+  ) {
+    throw new HttpError(404, "Project not found.");
+  }
+
+  res.status(200).json({
+    success: true,
+    project: toProjectSummary(project),
+  });
+});
+
 // Create a project (HSE_MANAGER + ADMIN only).
 router.post(
   "/",

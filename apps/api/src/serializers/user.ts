@@ -48,6 +48,18 @@ export interface SerializedEmployeeFull extends SerializedEmployeeBasic {
   updatedAt: string;
 }
 
+/**
+ * HSE personnel view used by the access-management directory. It adds only
+ * the HSE-relevant administrative fields (role, active status and site
+ * assignments) to the basic profile and deliberately omits HR employment
+ * information.
+ */
+export interface SerializedHsePersonnel extends SerializedEmployeeBasic {
+  ikoshRole: IkoshRole;
+  isActive: boolean;
+  assignedSites: string[];
+}
+
 /** Minimal document shape required to serialize a user. */
 export type UserLike = UserDocument & { _id: unknown };
 
@@ -162,5 +174,20 @@ export function toFullUserProfile(
     assignedSites: toAssignedSiteIds(user.assignedSites),
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * HSE personnel summary for access management. Includes role, active status
+ * and assigned site ids, but no HR employment information.
+ */
+export function toHsePersonnelSummary(
+  user: UserLike,
+): SerializedHsePersonnel {
+  return {
+    ...toBasicUserProfile(user),
+    ikoshRole: isIkoshRole(user.ikoshRole) ? user.ikoshRole : "EMPLOYEE",
+    isActive: user.isActive,
+    assignedSites: toAssignedSiteIds(user.assignedSites),
   };
 }

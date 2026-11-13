@@ -15,7 +15,10 @@ import {
 } from "../middleware/attach-ikosh-user.js";
 import { requireIkoshRole } from "../middleware/require-ikosh-role.js";
 import { isHseManagementRole } from "../lib/ikosh-constants.js";
-import { siteScopeFilter } from "../lib/site-access.js";
+import {
+  assertSiteAccess,
+  siteScopeFilter,
+} from "../lib/site-access.js";
 import { runAuditedMutation } from "../lib/audit-log.js";
 import { siteAuditSnapshot } from "../lib/audit-snapshots.js";
 import { Site } from "../models/Site.js";
@@ -87,6 +90,31 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
       total,
       totalPages: Math.ceil(total / limit),
     },
+  });
+});
+
+// Site detail. Site access is enforced for every role, and non-management
+// viewers cannot open sites outside their assignments or non-active sites.
+router.get("/:id", async (req: Request, res: Response): Promise<void> => {
+  const siteId = parseObjectIdParam(req.params.id, "site");
+  const viewer = getIkoshUser(req);
+
+  assertSiteAccess(viewer, siteId);
+
+  const site = await Site.findById(siteId)
+    .populate("project", "name")
+    .lean();
+
+  if (
+    !site ||
+    (site.status !== "ACTIVE" && !isHseManagementRole(viewer.ikoshRole))
+  ) {
+    throw new HttpError(404, "Site not found.");
+  }
+
+  res.status(200).json({
+    success: true,
+    site: toSiteSummary(site),
   });
 });
 

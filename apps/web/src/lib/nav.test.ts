@@ -47,6 +47,19 @@ describe("navigation visibility", () => {
     expect(managerLabels).toContain("Audit log");
   });
 
+  it("restricts HSE personnel access to HSE managers and admins", () => {
+    const labelsFor = (role: Parameters<typeof visibleNavSections>[0]) =>
+      visibleNavSections(role).flatMap((section) =>
+        section.items.map((item) => item.label),
+      );
+
+    expect(labelsFor("EMPLOYEE")).not.toContain("HSE personnel & access");
+    expect(labelsFor("SUPERVISOR")).not.toContain("HSE personnel & access");
+    expect(labelsFor("HSE_OFFICER")).not.toContain("HSE personnel & access");
+    expect(labelsFor("HSE_MANAGER")).toContain("HSE personnel & access");
+    expect(labelsFor("ADMIN")).toContain("HSE personnel & access");
+  });
+
   it("exposes only HSE navigation sections", () => {
     expect(NAV_SECTIONS.map((section) => section.label)).toEqual([
       "Command centre",
@@ -80,9 +93,33 @@ describe("active navigation item", () => {
     );
   });
 
-  it("never activates planned destinations", () => {
-    expect(findActiveNavItem("/incidents")).toBeUndefined();
-    expect(findActiveNavItem("/projects")).toBeUndefined();
+  it("activates project and site destinations", () => {
+    expect(findActiveNavItem("/projects")?.href).toBe("/projects");
+    expect(findActiveNavItem("/projects/507f1f77bcf86cd799439011")?.href).toBe(
+      "/projects",
+    );
+    expect(findActiveNavItem("/sites")?.href).toBe("/sites");
+    expect(findActiveNavItem("/sites/507f1f77bcf86cd799439011")?.href).toBe(
+      "/sites",
+    );
+  });
+
+  it("never activates remaining planned destinations", () => {
+    expect(findActiveNavItem("/inspections")).toBeUndefined();
+    expect(findActiveNavItem("/audit-log")).toBeUndefined();
+  });
+
+  it("resolves incident and near-miss routes to their registers", () => {
+    expect(findActiveNavItem("/incidents")?.href).toBe("/incidents");
+    expect(findActiveNavItem("/incidents/new")?.href).toBe("/incidents");
+    expect(
+      findActiveNavItem("/incidents/507f1f77bcf86cd799439011")?.href,
+    ).toBe("/incidents");
+    expect(findActiveNavItem("/near-misses")?.href).toBe("/near-misses");
+    expect(findActiveNavItem("/near-misses/new")?.href).toBe("/near-misses");
+    expect(
+      findActiveNavItem("/near-misses/507f1f77bcf86cd799439011")?.href,
+    ).toBe("/near-misses");
   });
 
   it("returns undefined outside the navigation map", () => {

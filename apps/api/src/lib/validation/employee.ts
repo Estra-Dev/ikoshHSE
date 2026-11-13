@@ -27,6 +27,8 @@ export const employeeDirectoryQuerySchema = paginationQuerySchema.extend({
   ikoshRole: ikoshRoleSchema.optional(),
   employmentType: employmentTypeSchema.optional(),
   isActive: z.enum(["true", "false"]).optional(),
+  /** Only employees assigned to this site. */
+  siteId: objectIdSchema.optional(),
   sort: z.enum(DIRECTORY_SORT_OPTIONS).optional(),
 });
 
@@ -76,3 +78,18 @@ export const updateEmployeeRoleSchema = z.object({
 export const updateEmployeeStatusSchema = z.object({
   isActive: z.boolean(),
 });
+
+/**
+ * Replaces an employee's site assignments. The payload is strict so callers
+ * cannot smuggle role, status or employment changes through this endpoint.
+ * Duplicate ids are removed by the route before persistence.
+ */
+export const updateEmployeeSitesSchema = z
+  .object({
+    siteIds: z.array(objectIdSchema).max(200),
+  })
+  .strict();
+
+export type UpdateEmployeeSitesInput = z.infer<
+  typeof updateEmployeeSitesSchema
+>;

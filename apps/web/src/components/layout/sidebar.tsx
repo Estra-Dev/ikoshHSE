@@ -27,9 +27,10 @@ import {
 } from "@/components/icons";
 import {
   findActiveNavItem,
-  NAV_SECTIONS,
+  visibleNavSections,
   type NavIconName,
 } from "@/lib/nav";
+import { useMe } from "@/lib/api/employees";
 
 const NAV_ICONS: Record<NavIconName, ComponentType<IconProps>> = {
   dashboard: DashboardIcon,
@@ -61,6 +62,8 @@ const NAV_ICONS: Record<NavIconName, ComponentType<IconProps>> = {
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const activeItem = findActiveNavItem(pathname);
+  const me = useMe();
+  const sections = visibleNavSections(me.data?.employee.ikoshRole);
 
   return (
     <div className="flex h-full flex-col bg-navy-900 text-white">
@@ -85,7 +88,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav aria-label="Primary" className="flex-1 overflow-y-auto px-3 py-5">
-        {NAV_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <div key={section.label} className="mb-6 last:mb-0">
             <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-navy-400">
               {section.label}
@@ -157,7 +160,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           </p>
         </div>
         <p className="mt-3 px-1 text-[10px] tracking-wide text-navy-400">
-          IKOSH NIG LTD · Phase 2
+          IKOSH NIG LTD · Phase 3
         </p>
       </div>
     </div>

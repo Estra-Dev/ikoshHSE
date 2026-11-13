@@ -28,6 +28,7 @@ interface RequestConfig {
   method: ApiMethod;
   path: string;
   body?: unknown;
+  formData?: FormData;
   searchParams?: URLSearchParams;
 }
 
@@ -61,7 +62,7 @@ async function request<T>(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  if (config.body !== undefined) {
+  if (config.body !== undefined && config.formData === undefined) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -71,7 +72,9 @@ async function request<T>(
     response = await fetch(url, {
       method: config.method,
       headers,
-      body: config.body === undefined ? undefined : JSON.stringify(config.body),
+      body:
+        config.formData ??
+        (config.body === undefined ? undefined : JSON.stringify(config.body)),
     });
   } catch {
     throw new ApiError(
@@ -97,6 +100,50 @@ async function request<T>(
   return payload as T;
 }
 
+/**
+ * Authenticated binary download. The API protects attachment downloads with
+ * the same Bearer token as JSON endpoints; errors are still JSON envelopes.
+ */
+async function requestBlob(
+  getAccessToken: GetAccessToken,
+  path: string,
+): Promise<Blob> {
+  const token = await getAccessToken();
+  const url = new URL(path, API_BASE_URL);
+  const headers: Record<string, string> = {};
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  let response: Response;
+
+  try {
+    response = await fetch(url, { method: "GET", headers });
+  } catch {
+    throw new ApiError(
+      0,
+      "Unable to reach the IKOSH API. Check your connection and try again.",
+    );
+  }
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as
+      | ApiEnvelope
+      | null;
+
+    throw new ApiError(
+      response.status,
+      payload?.message ??
+        (response.status === 401
+          ? "Authentication required."
+          : "The file could not be downloaded."),
+    );
+  }
+
+  return response.blob();
+}
+
 /** Bound API client scoped to the current authenticated session. */
 export function useApi() {
   const { getAccessToken } = useAuth();
@@ -107,10 +154,13 @@ export function useApi() {
         request<T>(getAccessToken, { method: "GET", path, searchParams }),
       post: <T>(path: string, body?: unknown) =>
         request<T>(getAccessToken, { method: "POST", path, body }),
+      postForm: <T>(path: string, formData: FormData) =>
+        request<T>(getAccessToken, { method: "POST", path, formData }),
       patch: <T>(path: string, body?: unknown) =>
         request<T>(getAccessToken, { method: "PATCH", path, body }),
       delete: <T>(path: string) =>
         request<T>(getAccessToken, { method: "DELETE", path }),
+      getBlob: (path: string) => requestBlob(getAccessToken, path),
     }),
     [getAccessToken],
   );

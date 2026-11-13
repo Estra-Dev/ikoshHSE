@@ -80,9 +80,21 @@ export interface DirectoryPagination {
 }
 
 export interface EmployeeDirectoryResponse {
-  employees: EmployeeBasic[];
+  employees: EmployeeDirectoryEntry[];
   pagination: DirectoryPagination;
 }
+
+/**
+ * HSE personnel view returned by the directory for HSE managers. Adds the
+ * HSE-relevant access fields and never includes HR employment information.
+ */
+export interface HsePersonnel extends EmployeeBasic {
+  ikoshRole: IkoshRole;
+  isActive: boolean;
+  assignedSites: string[];
+}
+
+export type EmployeeDirectoryEntry = EmployeeBasic | HsePersonnel;
 
 export interface DepartmentHeadSummary {
   id: string;
@@ -201,6 +213,88 @@ export interface IncidentsResponse {
   pagination: ApiPagination;
 }
 
+export interface IncidentResponse {
+  success: boolean;
+  incident: IncidentSummary;
+}
+
+/**
+ * Reporters submit observational facts only. `type` and optional detail
+ * fields are omitted when blank so the API never receives empty strings.
+ */
+export interface CreateIncidentInput {
+  siteId: string;
+  type?: IncidentType;
+  title: string;
+  description: string;
+  occurredAt: string;
+  location?: string;
+  immediateActions?: string;
+}
+
+/**
+ * Content updates. `siteId`, `category` and `status` are deliberately absent:
+ * the site is immutable and classification/status have dedicated endpoints.
+ */
+export interface UpdateIncidentInput {
+  type?: IncidentType;
+  title?: string;
+  description?: string;
+  occurredAt?: string;
+  location?: string;
+  immediateActions?: string;
+}
+
+export interface ClassifyIncidentInput {
+  category: string;
+}
+
+export interface UpdateIncidentStatusInput {
+  status: IncidentStatus;
+}
+
+/** Attachment metadata mirroring the API serializer. */
+export interface AttachmentSummary {
+  id: string;
+  originalFilename: string;
+  mimeType: string;
+  size: number;
+  checksum: string;
+  entityType: string | null;
+  entityId: string | null;
+  description: string;
+  uploadedBy: { id: string };
+  createdAt: string;
+}
+
+export interface AttachmentsResponse {
+  success: boolean;
+  attachments: AttachmentSummary[];
+  pagination: ApiPagination;
+}
+
+export interface AttachmentResponse {
+  success: boolean;
+  attachment: AttachmentSummary;
+}
+
+/** Read-only HSE reference data sourced from the API constants. */
+export interface HseReferenceData {
+  incidentCategories: string[];
+  incidentTypes: IncidentType[];
+  incidentStatuses: IncidentStatus[];
+  injuredBodyParts: string[];
+  permitToWorkTypes: string[];
+  wasteTypes: string[];
+  projectStatuses: string[];
+  siteStatuses: string[];
+}
+
+export interface HseReferenceResponse {
+  success: boolean;
+  data: HseReferenceData;
+}
+
 export interface ProjectSummary {
   id: string;
   name: string;
@@ -221,9 +315,14 @@ export interface ProjectsResponse {
   pagination: ApiPagination;
 }
 
+export interface ProjectResponse {
+  success: boolean;
+  project: ProjectSummary;
+}
+
 export interface SiteSummary {
   id: string;
-  project: { id: string };
+  project: { id: string; name: string | null };
   name: string;
   code: string;
   location: string | null;
@@ -237,4 +336,9 @@ export interface SitesResponse {
   success: boolean;
   sites: SiteSummary[];
   pagination: ApiPagination;
+}
+
+export interface SiteResponse {
+  success: boolean;
+  site: SiteSummary;
 }

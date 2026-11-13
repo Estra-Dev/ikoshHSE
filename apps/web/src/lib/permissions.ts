@@ -57,3 +57,60 @@ export function canListInactiveEmployees(
 ): boolean {
   return isManagementRole(role);
 }
+
+/** Every authenticated IKOSH role may file an incident or near-miss report. */
+export function canReportIncidents(role: IkoshRole | undefined): boolean {
+  return role !== undefined;
+}
+
+/**
+ * Site access administration is restricted to HSE managers and
+ * administrators. The API enforces the same rule.
+ */
+export function canManagePersonnelAccess(
+  role: IkoshRole | undefined,
+): boolean {
+  return isHseManagementRole(role);
+}
+
+/**
+ * Projects and sites are HSE reference data: only HSE managers and
+ * administrators may create, edit, change status or delete them. The API
+ * enforces the same rule.
+ */
+export function canManageWorksites(role: IkoshRole | undefined): boolean {
+  return isHseManagementRole(role);
+}
+
+/** Classification and workflow status changes are HSE manager/admin only. */
+export function canManageIncidentWorkflow(
+  role: IkoshRole | undefined,
+): boolean {
+  return isHseManagementRole(role);
+}
+
+interface EditableIncident {
+  reportedBy: { id: string };
+  status: "REPORTED" | "TRIAGED" | "CLOSED";
+}
+
+/**
+ * Mirrors `PATCH /api/incidents/:id`: HSE management may edit content at any
+ * status, while a reporter may only edit their own report before triage.
+ */
+export function canEditIncidentReport(
+  role: IkoshRole | undefined,
+  viewerId: string | undefined,
+  incident: EditableIncident,
+): boolean {
+  if (canManageIncidentWorkflow(role)) {
+    return true;
+  }
+
+  return (
+    role !== undefined &&
+    viewerId !== undefined &&
+    incident.reportedBy.id === viewerId &&
+    incident.status === "REPORTED"
+  );
+}

@@ -123,6 +123,59 @@ describe("projects API", () => {
     expect(response.status).toBe(403);
   });
 
+  it("requires authentication for project detail", async () => {
+    const project = await createProject();
+    const response = await request(testApp).get(`/api/projects/${project._id}`);
+
+    expect(response.status).toBe(401);
+  });
+
+  it("returns active project detail and hides non-active projects from non-management", async () => {
+    const activeProject = await createProject();
+    const completedProject = await createProject({ status: "COMPLETED" });
+    const employee = await signInAsIkoshUser({ ikoshRole: "EMPLOYEE" });
+    const manager = await signInAsIkoshUser({ ikoshRole: "HSE_MANAGER" });
+
+    const activeResponse = await request(testApp)
+      .get(`/api/projects/${activeProject._id}`)
+      .set("Authorization", employee.authorization);
+
+    expect(activeResponse.status).toBe(200);
+    expect(activeResponse.body.project).toMatchObject({
+      id: String(activeProject._id),
+      name: activeProject.name,
+      code: activeProject.code,
+      status: "ACTIVE",
+    });
+
+    const hiddenResponse = await request(testApp)
+      .get(`/api/projects/${completedProject._id}`)
+      .set("Authorization", employee.authorization);
+
+    expect(hiddenResponse.status).toBe(404);
+
+    const managerResponse = await request(testApp)
+      .get(`/api/projects/${completedProject._id}`)
+      .set("Authorization", manager.authorization);
+
+    expect(managerResponse.status).toBe(200);
+    expect(managerResponse.body.project.status).toBe("COMPLETED");
+  });
+
+  it("rejects unknown and malformed project detail ids", async () => {
+    const { authorization } = await signInAsIkoshUser({ ikoshRole: "ADMIN" });
+
+    const unknown = await request(testApp)
+      .get("/api/projects/000000000000000000000000")
+      .set("Authorization", authorization);
+    const malformed = await request(testApp)
+      .get("/api/projects/not-an-id")
+      .set("Authorization", authorization);
+
+    expect(unknown.status).toBe(404);
+    expect(malformed.status).toBe(400);
+  });
+
   it("creates projects for HSE management and enforces validation", async () => {
     const { authorization } = await signInAsIkoshUser({
       ikoshRole: "HSE_MANAGER",
@@ -179,6 +232,15 @@ describe("projects API", () => {
 
     expect(updated.status).toBe(200);
     expect(updated.body.project.name).toBe("Updated Project");
+
+    const cleared = await request(testApp)
+      .patch(`/api/projects/${project._id}`)
+      .set("Authorization", manager.authorization)
+      .send({ client: null, location: null });
+
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.project.client).toBeNull();
+    expect(cleared.body.project.location).toBeNull();
   });
 
   it("blocks deletion while sites exist and succeeds otherwise", async () => {

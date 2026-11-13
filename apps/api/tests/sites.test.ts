@@ -38,6 +38,89 @@ describe("sites API", () => {
     expect(response.status).toBe(401);
   });
 
+  it("requires authentication for site detail", async () => {
+    const project = await createProject();
+    const site = await createSite(project._id);
+    const response = await request(testApp).get(`/api/sites/${site._id}`);
+
+    expect(response.status).toBe(401);
+  });
+
+  it("enforces site access isolation and lifecycle visibility on detail", async () => {
+    const project = await createProject();
+    const assignedSite = await createSite(project._id);
+    const otherSite = await createSite(project._id);
+    const completedSite = await createSite(project._id, "COMPLETED");
+
+    const employee = await signInAsIkoshUser({
+      ikoshRole: "EMPLOYEE",
+      assignedSites: [assignedSite._id, completedSite._id],
+    });
+    const manager = await signInAsIkoshUser({ ikoshRole: "HSE_MANAGER" });
+
+    const assignedResponse = await request(testApp)
+      .get(`/api/sites/${assignedSite._id}`)
+      .set("Authorization", employee.authorization);
+
+    expect(assignedResponse.status).toBe(200);
+    expect(assignedResponse.body.site).toMatchObject({
+      id: String(assignedSite._id),
+      name: assignedSite.name,
+      code: assignedSite.code,
+      status: "ACTIVE",
+      project: { id: String(project._id), name: project.name },
+    });
+
+    const unassignedResponse = await request(testApp)
+      .get(`/api/sites/${otherSite._id}`)
+      .set("Authorization", employee.authorization);
+    const inactiveResponse = await request(testApp)
+      .get(`/api/sites/${completedSite._id}`)
+      .set("Authorization", employee.authorization);
+    const managerResponse = await request(testApp)
+      .get(`/api/sites/${completedSite._id}`)
+      .set("Authorization", manager.authorization);
+
+    expect(unassignedResponse.status).toBe(404);
+    expect(inactiveResponse.status).toBe(404);
+    expect(managerResponse.status).toBe(200);
+  });
+
+  it("rejects unknown and malformed site detail ids", async () => {
+    const { authorization } = await signInAsIkoshUser({ ikoshRole: "ADMIN" });
+
+    const unknown = await request(testApp)
+      .get("/api/sites/000000000000000000000000")
+      .set("Authorization", authorization);
+    const malformed = await request(testApp)
+      .get("/api/sites/not-an-id")
+      .set("Authorization", authorization);
+
+    expect(unknown.status).toBe(404);
+    expect(malformed.status).toBe(400);
+  });
+
+  it("serializes populated project references in site lists", async () => {
+    const project = await createProject();
+    const site = await createSite(project._id);
+    const { authorization } = await signInAsIkoshUser({
+      ikoshRole: "HSE_MANAGER",
+    });
+
+    const response = await request(testApp)
+      .get("/api/sites")
+      .set("Authorization", authorization);
+    const serialized = response.body.sites.find(
+      (entry: { id: string }) => entry.id === String(site._id),
+    );
+
+    expect(response.status).toBe(200);
+    expect(serialized.project).toEqual({
+      id: String(project._id),
+      name: project.name,
+    });
+  });
+
   it("fails closed when an employee has no assigned sites", async () => {
     const project = await createProject();
     await createSite(project._id);
@@ -196,6 +279,14 @@ describe("sites API", () => {
 
     expect(updated.status).toBe(200);
     expect(updated.body.site.name).toBe("Updated Site");
+
+    const cleared = await request(testApp)
+      .patch(`/api/sites/${created.body.site.id}`)
+      .set("Authorization", authorization)
+      .send({ location: null });
+
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.site.location).toBeNull();
   });
 
   it("blocks deletion while employees or personnel are assigned", async () => {

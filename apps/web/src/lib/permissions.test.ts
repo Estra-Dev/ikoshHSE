@@ -2,8 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { IkoshRole } from "./api/types";
 import {
   canEditEmploymentInfo,
+  canEditIncidentReport,
   canListInactiveEmployees,
   canManageDepartments,
+  canManageIncidentWorkflow,
+  canManagePersonnelAccess,
+  canManageWorksites,
+  canReportIncidents,
   canViewFullProfile,
   isAdmin,
   isManagementRole,
@@ -13,12 +18,14 @@ const ALL_ROLES: IkoshRole[] = [
   "EMPLOYEE",
   "SUPERVISOR",
   "HSE_OFFICER",
+  "HSE_MANAGER",
   "ADMIN",
 ];
 
 const MANAGEMENT_ROLES: IkoshRole[] = [
   "SUPERVISOR",
   "HSE_OFFICER",
+  "HSE_MANAGER",
   "ADMIN",
 ];
 
@@ -76,5 +83,89 @@ describe("admin-only capabilities", () => {
 
     expect(canListInactiveEmployees("EMPLOYEE")).toBe(false);
     expect(canListInactiveEmployees(undefined)).toBe(false);
+  });
+
+  it("restricts HSE personnel access management to HSE managers and admins", () => {
+    for (const role of ALL_ROLES) {
+      expect(canManagePersonnelAccess(role)).toBe(
+        role === "HSE_MANAGER" || role === "ADMIN",
+      );
+    }
+
+    expect(canManagePersonnelAccess(undefined)).toBe(false);
+  });
+
+  it("restricts project and site management to HSE managers and admins", () => {
+    for (const role of ALL_ROLES) {
+      expect(canManageWorksites(role)).toBe(
+        role === "HSE_MANAGER" || role === "ADMIN",
+      );
+    }
+
+    expect(canManageWorksites(undefined)).toBe(false);
+  });
+});
+
+describe("incident permissions", () => {
+  it("lets every known IKOSH role report incidents", () => {
+    for (const role of ALL_ROLES) {
+      expect(canReportIncidents(role)).toBe(true);
+    }
+
+    expect(canReportIncidents(undefined)).toBe(false);
+  });
+
+  it("restricts classification and status changes to HSE managers and admins", () => {
+    for (const role of ALL_ROLES) {
+      expect(canManageIncidentWorkflow(role)).toBe(
+        role === "HSE_MANAGER" || role === "ADMIN",
+      );
+    }
+
+    expect(canManageIncidentWorkflow(undefined)).toBe(false);
+  });
+});
+
+describe("canEditIncidentReport", () => {
+  const viewerId = "507f1f77bcf86cd799439011";
+  const ownReport = {
+    reportedBy: { id: viewerId },
+    status: "REPORTED" as const,
+  };
+
+  it("grants HSE management content edits at every status", () => {
+    for (const status of ["REPORTED", "TRIAGED", "CLOSED"] as const) {
+      for (const role of ["HSE_MANAGER", "ADMIN"] as const) {
+        expect(
+          canEditIncidentReport(role, viewerId, {
+            reportedBy: { id: "another-user" },
+            status,
+          }),
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("lets a reporter edit only their own REPORTED report", () => {
+    for (const role of ["EMPLOYEE", "SUPERVISOR", "HSE_OFFICER"] as const) {
+      expect(canEditIncidentReport(role, viewerId, ownReport)).toBe(true);
+      expect(
+        canEditIncidentReport(role, viewerId, {
+          ...ownReport,
+          status: "TRIAGED",
+        }),
+      ).toBe(false);
+      expect(
+        canEditIncidentReport(role, viewerId, {
+          reportedBy: { id: "another-user" },
+          status: "REPORTED",
+        }),
+      ).toBe(false);
+    }
+  });
+
+  it("fails closed without a resolved viewer", () => {
+    expect(canEditIncidentReport("EMPLOYEE", undefined, ownReport)).toBe(false);
+    expect(canEditIncidentReport(undefined, viewerId, ownReport)).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button, Spinner } from "@/components/ui/feedback";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -16,6 +17,7 @@ import {
   formatHseLabel,
   type DashboardScopeFilters,
 } from "@/lib/hse-dashboard";
+import { incidentDetailHref } from "@/lib/incident-workflow";
 
 const STATUS_TONES: Record<IncidentStatus, BadgeTone> = {
   REPORTED: "amber",
@@ -127,9 +129,12 @@ export function LatestReports({
                   )}
                 </div>
 
-                <p className="mt-2 line-clamp-2 text-sm font-medium text-ink">
+                <Link
+                  href={incidentDetailHref(incident.type, incident.id)}
+                  className="mt-2 line-clamp-2 block text-sm font-medium text-ink underline-offset-2 hover:text-navy-700 hover:underline"
+                >
                   {incident.title}
-                </p>
+                </Link>
 
                 <p className="mt-1 text-xs text-muted">
                   {siteNames.get(incident.site.id) ?? "Unknown site"}

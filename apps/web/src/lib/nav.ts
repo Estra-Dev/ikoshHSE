@@ -71,12 +71,14 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     label: "Safety operations",
     items: [
       {
-        kind: "planned",
+        kind: "link",
+        href: "/incidents",
         label: "Incidents",
         icon: "incidents",
       },
       {
-        kind: "planned",
+        kind: "link",
+        href: "/near-misses",
         label: "Near misses",
         icon: "nearMisses",
       },
@@ -111,12 +113,14 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     label: "Worksites",
     items: [
       {
-        kind: "planned",
+        kind: "link",
+        href: "/projects",
         label: "Projects",
         icon: "projects",
       },
       {
-        kind: "planned",
+        kind: "link",
+        href: "/sites",
         label: "Sites",
         icon: "sites",
       },
@@ -130,6 +134,13 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         href: "/employees",
         label: "HSE workforce",
         icon: "workforce",
+      },
+      {
+        kind: "link",
+        href: "/personnel",
+        label: "HSE personnel & access",
+        icon: "workforce",
+        roles: ["HSE_MANAGER", "ADMIN"],
       },
       {
         kind: "planned",

@@ -11,6 +11,7 @@ import {
   buildDirectorySearchParams,
   type DirectoryFilterState,
 } from "./directory-filters";
+import { personnelKeys } from "./personnel";
 import type {
   EmployeeBasic,
   EmployeeDirectoryResponse,
@@ -144,6 +145,30 @@ export function useUpdateEmployeeStatus() {
       }),
     onSuccess: ({ employee }) => {
       void queryClient.invalidateQueries({ queryKey: employeeKeys.all });
+      void queryClient.setQueryData(employeeKeys.detail(employee.id), {
+        employee,
+      });
+    },
+  });
+}
+
+/**
+ * Replaces an employee's site assignments. Restricted to HSE managers and
+ * administrators by the API; the payload is a full replacement list.
+ */
+export function useUpdateEmployeeSites() {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, siteIds }: { id: string; siteIds: string[] }) =>
+      api.patch<{ employee: EmployeeFull }>(`/api/employees/${id}/sites`, {
+        siteIds,
+      }),
+    onSuccess: ({ employee }) => {
+      void queryClient.invalidateQueries({ queryKey: employeeKeys.all });
+      void queryClient.invalidateQueries({ queryKey: personnelKeys.all });
+      void queryClient.invalidateQueries({ queryKey: ["worksites"] });
       void queryClient.setQueryData(employeeKeys.detail(employee.id), {
         employee,
       });

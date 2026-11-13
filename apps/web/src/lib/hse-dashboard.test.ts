@@ -112,7 +112,7 @@ describe("dashboard query construction", () => {
 function siteFixture(id: string, name: string): SiteSummary {
   return {
     id,
-    project: { id: "507f1f77bcf86cd799439010" },
+    project: { id: "507f1f77bcf86cd799439010", name: "Test Project" },
     name,
     code: name.toUpperCase(),
     location: null,

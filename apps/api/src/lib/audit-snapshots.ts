@@ -53,6 +53,9 @@ export function employeeAuditSnapshot(
     managerId: idOf(employee.managerId),
     ikoshRole: employee.ikoshRole,
     isActive: employee.isActive,
+    assignedSites: (employee.assignedSites ?? [])
+      .map((siteId) => idOf(siteId))
+      .sort(),
   };
 }
 
