@@ -88,6 +88,8 @@ export interface IncidentListQuery {
   siteId?: string;
   status?: IncidentStatus | "";
   type?: IncidentType | "";
+  /** Narrows the register to the caller's own reports. */
+  mine?: boolean;
   page?: number;
   limit?: number;
 }
@@ -108,6 +110,10 @@ export function buildIncidentListSearchParams(
 
   if (query.type) {
     searchParams.set("type", query.type);
+  }
+
+  if (query.mine) {
+    searchParams.set("mine", "true");
   }
 
   if (query.page !== undefined) {

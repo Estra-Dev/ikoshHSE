@@ -49,6 +49,7 @@ const router: Router = Router();
 
 const CORRECTIVE_ACTION_POPULATE = [
   { path: "incident", select: "type title" },
+  { path: "inspection", select: "title" },
   { path: "project", select: "name" },
   { path: "site", select: "name code" },
   { path: "assignedTo", select: "firstName lastName" },
@@ -215,6 +216,20 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
 
   const { description, source, assignedTo, dueDate } = parsed.data;
 
+  if (source === "INSPECTION") {
+    throw new HttpError(
+      400,
+      "Inspection corrective actions must be raised from an inspection finding.",
+    );
+  }
+
+  if (source === "HSE_AUDIT") {
+    throw new HttpError(
+      400,
+      "Audit corrective actions must be raised from an audit finding.",
+    );
+  }
+
   const action = await runAuditedMutation(viewer._id, async (session) => {
     let incidentId: Types.ObjectId | null = null;
     let projectId: Types.ObjectId;
@@ -377,13 +392,16 @@ router.patch(
       const { description, projectId, siteId, assignedTo, dueDate } =
         parsed.data;
 
-      // Incident-linked actions derive project and site from the report at
-      // creation. Allowing either to move here would let provenance and
-      // site-scoped visibility diverge from the linked incident.
-      if (action.incident && (projectId !== undefined || siteId !== undefined)) {
+      // Incident- and inspection-linked actions derive project and site from
+      // their source record at creation. Allowing either to move here would let
+      // provenance and site-scoped visibility diverge from that record.
+      if (
+        (action.incident || action.inspection) &&
+        (projectId !== undefined || siteId !== undefined)
+      ) {
         throw new HttpError(
           409,
-          "Project and site are derived from the linked incident and cannot be changed.",
+          "Project and site are derived from the linked record and cannot be changed.",
         );
       }
 

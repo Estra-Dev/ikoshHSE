@@ -26,6 +26,11 @@ import { Project } from "../models/Project.js";
 import { User } from "../models/User.js";
 import { ContractorPersonnel } from "../models/ContractorPersonnel.js";
 import { ContractorPersonnelSiteAssignment } from "../models/ContractorPersonnelSiteAssignment.js";
+import { RiskAssessment } from "../models/RiskAssessment.js";
+import { Permit } from "../models/Permit.js";
+import { HseAudit } from "../models/HseAudit.js";
+import { TrainingSession } from "../models/TrainingSession.js";
+import { ToolboxTalk } from "../models/ToolboxTalk.js";
 import { toSiteSummary } from "../serializers/site.js";
 
 const router: Router = Router();
@@ -259,24 +264,43 @@ router.delete(
       }
 
       // Block deletion if employees are assigned, contractor assignment
-      // history exists, or unbackfilled legacy personnel site values remain.
-      const [employeesCount, assignmentHistoryCount, legacyPersonnelCount] =
-        await Promise.all([
-          User.countDocuments({ assignedSites: siteId }).session(session),
-          ContractorPersonnelSiteAssignment.countDocuments({
-            site: siteId,
-          }).session(session),
-          ContractorPersonnel.countDocuments({ site: siteId }).session(session),
-        ]);
+      // history exists, unbackfilled legacy personnel site values remain, or a
+      // risk assessment still references the site.
+      const [
+        employeesCount,
+        assignmentHistoryCount,
+        legacyPersonnelCount,
+        riskAssessmentCount,
+        auditCount,
+        permitCount,
+        trainingCount,
+        toolboxTalkCount,
+      ] = await Promise.all([
+        User.countDocuments({ assignedSites: siteId }).session(session),
+        ContractorPersonnelSiteAssignment.countDocuments({
+          site: siteId,
+        }).session(session),
+        ContractorPersonnel.countDocuments({ site: siteId }).session(session),
+        RiskAssessment.countDocuments({ site: siteId }).session(session),
+        HseAudit.countDocuments({ site: siteId }).session(session),
+        Permit.countDocuments({ site: siteId }).session(session),
+        TrainingSession.countDocuments({ site: siteId }).session(session),
+        ToolboxTalk.countDocuments({ site: siteId }).session(session),
+      ]);
 
       if (
         employeesCount > 0 ||
         assignmentHistoryCount > 0 ||
-        legacyPersonnelCount > 0
+        legacyPersonnelCount > 0 ||
+        riskAssessmentCount > 0 ||
+        auditCount > 0 ||
+        permitCount > 0 ||
+        trainingCount > 0 ||
+        toolboxTalkCount > 0
       ) {
         throw new HttpError(
           409,
-          `Site still has assigned employees or contractor personnel assignment history. Reassign employees or retire the site instead of deleting it.`,
+          `Site still has assigned employees, contractor personnel assignment history, risk assessments, audits, permits, training sessions or toolbox talks. Reassign employees or retain dependent records instead of deleting it.`,
         );
       }
 

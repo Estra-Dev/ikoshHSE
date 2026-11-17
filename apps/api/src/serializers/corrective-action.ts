@@ -3,6 +3,10 @@ export interface CorrectiveActionLike {
   description: string;
   source: string;
   incident?: unknown;
+  inspection?: unknown;
+  audit?: unknown;
+  findingId?: unknown;
+  auditFindingId?: unknown;
   project: unknown;
   site?: unknown;
   assignedTo: unknown;
@@ -42,11 +46,25 @@ export interface IncidentRef {
   title: string | null;
 }
 
+export interface InspectionRef {
+  id: string;
+  title: string | null;
+}
+
+export interface AuditRef {
+  id: string;
+  title: string | null;
+}
+
 export interface SerializedCorrectiveAction {
   id: string;
   description: string;
   source: string;
   incident: IncidentRef | null;
+  inspection: InspectionRef | null;
+  audit: AuditRef | null;
+  findingId: string | null;
+  auditFindingId: string | null;
   project: ProjectRef;
   site: SiteRef | null;
   assignedTo: UserRef;
@@ -114,6 +132,8 @@ export function toCorrectiveActionSummary(
   const project = asDocument(action.project);
   const site = asDocument(action.site);
   const incident = asDocument(action.incident);
+  const inspection = asDocument(action.inspection);
+  const audit = asDocument(action.audit);
 
   return {
     id: String(action._id),
@@ -125,6 +145,22 @@ export function toCorrectiveActionSummary(
           type: incident.type ?? null,
           title: incident.title ?? null,
         }
+      : null,
+    inspection: inspection
+      ? {
+          id: String(inspection._id),
+          title: inspection.title ?? null,
+        }
+      : null,
+    audit: audit
+      ? {
+          id: String(audit._id),
+          title: audit.title ?? null,
+        }
+      : null,
+    findingId: action.findingId ? String(action.findingId) : null,
+    auditFindingId: action.auditFindingId
+      ? String(action.auditFindingId)
       : null,
     project: {
       id: project ? String(project._id) : "",

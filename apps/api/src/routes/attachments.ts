@@ -19,12 +19,59 @@ import {
   getIkoshUser,
 } from "../middleware/attach-ikosh-user.js";
 import { requireIkoshRole } from "../middleware/require-ikosh-role.js";
-import { isHseManagementRole } from "../lib/ikosh-constants.js";
-import { canViewCorrectiveActions } from "../lib/hse-permissions.js";
+import {
+  isHseManagementRole,
+  isManagementRole,
+} from "../lib/ikosh-constants.js";
+import {
+  isPermitTerminalStatus,
+  isToolboxTalkTerminalStatus,
+  isTrainingSessionTerminalStatus,
+} from "../lib/hse-constants.js";
+import {
+  canViewCorrectiveActions,
+  canViewInspections,
+  canViewAudits,
+  canViewPermits,
+  canViewTraining,
+  canViewToolboxTalks,
+} from "../lib/hse-permissions.js";
+import {
+  assertTrainingSessionAccess,
+  canAccessTrainingSession,
+  canUploadTrainingEvidence,
+  trainingScopeFilter,
+} from "../lib/training-access.js";
+import {
+  assertToolboxTalkAccess,
+  canAccessToolboxTalk,
+  canUploadToolboxTalkEvidence,
+  toolboxTalkScopeFilter,
+} from "../lib/toolbox-talk-access.js";
 import {
   canAccessCorrectiveAction,
   canUploadCorrectiveActionEvidence,
 } from "../lib/corrective-action-access.js";
+import {
+  canAccessInspection,
+  canUploadInspectionEvidence,
+} from "../lib/inspection-access.js";
+import {
+  canAccessHseAudit,
+  canUploadHseAuditEvidence,
+} from "../lib/hse-audit-access.js";
+import {
+  assertPermitAccess,
+  canAccessPermit,
+  canUploadPermitEvidence,
+  permitScopeFilter,
+} from "../lib/permit-access.js";
+import {
+  assertIncidentAccess,
+  canAccessIncident,
+  incidentEvidenceFilter,
+  isIncidentReporter,
+} from "../lib/incident-access.js";
 import {
   isSiteAssigned,
   assertSiteAccess,
@@ -44,8 +91,13 @@ import {
 } from "../lib/attachments/storage.js";
 import { Attachment } from "../models/Attachment.js";
 import { CorrectiveAction } from "../models/CorrectiveAction.js";
+import { HseAudit } from "../models/HseAudit.js";
 import { Incident } from "../models/Incident.js";
+import { Inspection } from "../models/Inspection.js";
+import { Permit } from "../models/Permit.js";
 import { Site } from "../models/Site.js";
+import { TrainingSession } from "../models/TrainingSession.js";
+import { ToolboxTalk } from "../models/ToolboxTalk.js";
 import { toAttachmentSummary } from "../serializers/attachment.js";
 
 const router: Router = Router();
@@ -121,7 +173,9 @@ async function assertAttachmentEntityAccess(
       throw new HttpError(404, "Specified incident was not found.");
     }
 
-    assertSiteAccess(viewer, incident.site);
+    // Reporters may attach evidence to their own report even after leaving
+    // the site; everyone else follows the existing site-scoped rule.
+    assertIncidentAccess(viewer, incident);
     return;
   }
 
@@ -155,6 +209,150 @@ async function assertAttachmentEntityAccess(
     return;
   }
 
+  if (entityType === "inspection") {
+    const inspection = await Inspection.findById(entityId).session(session);
+
+    if (!inspection) {
+      throw new HttpError(404, "Specified inspection was not found.");
+    }
+
+    if (!canUploadInspectionEvidence(viewer, inspection)) {
+      // Distinguish a cancelled inspection from an unauthorized caller without
+      // leaking status: the status-free check below only succeeds for
+      // management, the creator or the inspector.
+      if (
+        inspection.status === "CANCELLED" &&
+        canUploadInspectionEvidence(viewer, {
+          createdBy: inspection.createdBy,
+          inspector: inspection.inspector,
+        })
+      ) {
+        throw new HttpError(
+          409,
+          "Evidence cannot be added to a cancelled inspection.",
+        );
+      }
+
+      throw new HttpError(404, "Specified inspection was not found.");
+    }
+
+    return;
+  }
+
+  if (entityType === "hse_audit") {
+    const audit = await HseAudit.findById(entityId).session(session);
+
+    if (!audit) {
+      throw new HttpError(404, "Specified audit was not found.");
+    }
+
+    if (!canUploadHseAuditEvidence(viewer, audit)) {
+      // Distinguish a closed audit from an unauthorized caller without leaking
+      // status: the status-free check below only succeeds for management, the
+      // creator or an assigned auditor.
+      if (
+        (audit.status === "COMPLETED" || audit.status === "CANCELLED") &&
+        canUploadHseAuditEvidence(viewer, {
+          createdBy: audit.createdBy,
+          auditors: audit.auditors,
+        })
+      ) {
+        throw new HttpError(
+          409,
+          "Evidence cannot be added to a completed or cancelled audit.",
+        );
+      }
+
+      throw new HttpError(404, "Specified audit was not found.");
+    }
+
+    return;
+  }
+
+  if (entityType === "permit") {
+    const permit = await Permit.findById(entityId).session(session);
+
+    if (!permit) {
+      throw new HttpError(404, "Specified permit was not found.");
+    }
+
+    assertPermitAccess(viewer, permit);
+
+    if (!canUploadPermitEvidence(viewer, permit)) {
+      if (
+        isPermitTerminalStatus(permit.status) &&
+        (isHseManagementRole(viewer.ikoshRole) ||
+          String(permit.createdBy) === String(viewer._id) ||
+          String(permit.responsiblePerson) === String(viewer._id))
+      ) {
+        throw new HttpError(
+          409,
+          "Evidence cannot be added to a closed, rejected or cancelled permit.",
+        );
+      }
+
+      throw new HttpError(404, "Specified permit was not found.");
+    }
+
+    return;
+  }
+
+  if (entityType === "training_session") {
+    const trainingSession = await TrainingSession.findById(entityId).session(
+      session,
+    );
+
+    if (!trainingSession) {
+      throw new HttpError(404, "Specified training session was not found.");
+    }
+
+    assertTrainingSessionAccess(viewer, trainingSession);
+
+    if (!canUploadTrainingEvidence(viewer, trainingSession)) {
+      if (
+        isTrainingSessionTerminalStatus(trainingSession.status) &&
+        (isHseManagementRole(viewer.ikoshRole) ||
+          String(trainingSession.createdBy) === String(viewer._id))
+      ) {
+        throw new HttpError(
+          409,
+          "Evidence cannot be added to a completed or cancelled training session.",
+        );
+      }
+
+      throw new HttpError(404, "Specified training session was not found.");
+    }
+
+    return;
+  }
+
+  if (entityType === "toolbox_talk") {
+    const talk = await ToolboxTalk.findById(entityId).session(session);
+
+    if (!talk) {
+      throw new HttpError(404, "Specified toolbox talk was not found.");
+    }
+
+    assertToolboxTalkAccess(viewer, talk);
+
+    if (!canUploadToolboxTalkEvidence(viewer, talk)) {
+      if (
+        isToolboxTalkTerminalStatus(talk.status) &&
+        (isHseManagementRole(viewer.ikoshRole) ||
+          String(talk.createdBy) === String(viewer._id))
+      ) {
+        throw new HttpError(
+          409,
+          "Evidence cannot be added to a completed or cancelled toolbox talk.",
+        );
+      }
+
+      throw new HttpError(404, "Specified toolbox talk was not found.");
+    }
+
+    return;
+  }
+
   throw new HttpError(400, "Unsupported attachment entity type.");
 }
 
@@ -168,10 +366,12 @@ async function buildVisibleAttachmentFilter(
   const assignedSites = (viewer.assignedSites ?? []).map(
     (siteId) => new Types.ObjectId(String(siteId)),
   );
-  const incidentIds =
-    assignedSites.length > 0
-      ? await Incident.distinct("_id", { site: { $in: assignedSites } })
-      : [];
+  // Ordinary employees only see evidence for their own reports. Supervisors
+  // and HSE staff keep site-scoped incident evidence.
+  const incidentIds = await Incident.distinct(
+    "_id",
+    incidentEvidenceFilter(viewer),
+  );
   const canViewActions = canViewCorrectiveActions(viewer.ikoshRole);
   const actionScope = {
     $or: [
@@ -183,6 +383,55 @@ async function buildVisibleAttachmentFilter(
     ? (await CorrectiveAction.find(actionScope).lean()).map(
         (action) => action._id,
       )
+    : [];
+
+  const canViewInspectionRecords = canViewInspections(viewer.ikoshRole);
+  const inspectionScope = {
+    $or: [
+      { inspector: viewer._id as Types.ObjectId },
+      { site: { $in: assignedSites } },
+    ],
+  };
+  const inspectionIds = canViewInspectionRecords
+    ? (await Inspection.find(inspectionScope).lean()).map(
+        (inspection) => inspection._id,
+      )
+    : [];
+
+  const canViewAuditRecords = canViewAudits(viewer.ikoshRole);
+  const auditScope = {
+    $or: [
+      { auditors: viewer._id as Types.ObjectId },
+      { site: { $in: assignedSites } },
+    ],
+  };
+  const auditIds = canViewAuditRecords
+    ? (await HseAudit.find(auditScope).lean()).map((audit) => audit._id)
+    : [];
+
+  const canViewPermitRecords = canViewPermits(viewer.ikoshRole);
+  const permitIds = canViewPermitRecords
+    ? (await Permit.find(permitScopeFilter(viewer)).select("_id").lean()).map(
+        (permit) => permit._id,
+      )
+    : [];
+
+  const canViewTrainingRecords = canViewTraining(viewer.ikoshRole);
+  const trainingSessionIds = canViewTrainingRecords
+    ? (
+        await TrainingSession.find(trainingScopeFilter(viewer))
+          .select("_id")
+          .lean()
+      ).map((session) => session._id)
+    : [];
+
+  const canViewToolboxRecords = canViewToolboxTalks(viewer.ikoshRole);
+  const toolboxTalkIds = canViewToolboxRecords
+    ? (
+        await ToolboxTalk.find(toolboxTalkScopeFilter(viewer))
+          .select("_id")
+          .lean()
+      ).map((talk) => talk._id)
     : [];
 
   const filter: Record<string, unknown> = {
@@ -197,13 +446,59 @@ async function buildVisibleAttachmentFilter(
         entityType: "corrective_action",
         entityId: { $in: correctiveActionIds },
       },
+      {
+        entityType: "inspection",
+        entityId: { $in: inspectionIds },
+      },
+      {
+        entityType: "hse_audit",
+        entityId: { $in: auditIds },
+      },
+      {
+        entityType: "permit",
+        entityId: { $in: permitIds },
+      },
+      {
+        entityType: "training_session",
+        entityId: { $in: trainingSessionIds },
+      },
+      {
+        entityType: "toolbox_talk",
+        entityId: { $in: toolboxTalkIds },
+      },
     ],
   };
 
-  // Ordinary employees have no CAPA access, even if they happen to have
-  // uploaded a file that was later linked to a corrective action.
+  // Ordinary employees have no CAPA, inspection, audit or permit access, even
+  // if they happen to have uploaded a file that was later linked to one.
+  const hidden: Record<string, unknown>[] = [];
+
   if (!canViewActions) {
-    filter.$and = [{ entityType: { $ne: "corrective_action" } }];
+    hidden.push({ entityType: { $ne: "corrective_action" } });
+  }
+
+  if (!canViewInspectionRecords) {
+    hidden.push({ entityType: { $ne: "inspection" } });
+  }
+
+  if (!canViewAuditRecords) {
+    hidden.push({ entityType: { $ne: "hse_audit" } });
+  }
+
+  if (!canViewPermitRecords) {
+    hidden.push({ entityType: { $ne: "permit" } });
+  }
+
+  if (!canViewTrainingRecords) {
+    hidden.push({ entityType: { $ne: "training_session" } });
+  }
+
+  if (!canViewToolboxRecords) {
+    hidden.push({ entityType: { $ne: "toolbox_talk" } });
+  }
+
+  if (hidden.length > 0) {
+    filter.$and = hidden;
   }
 
   return filter;
@@ -439,6 +734,97 @@ router.get(
       if (!allowed) {
         throw new HttpError(404, "Attachment not found.");
       }
+    } else if (!isManagement && attachment.entityType === "inspection") {
+      // Inspection evidence visibility follows the inspection, not file
+      // ownership: unrelated HSE staff and ordinary employees must not read it.
+      let allowed = false;
+
+      if (canViewInspections(viewer.ikoshRole) && attachment.entityId) {
+        const inspection = await Inspection.findById(attachment.entityId)
+          .select("inspector site")
+          .lean();
+
+        if (inspection) {
+          allowed = canAccessInspection(viewer, inspection);
+        }
+      }
+
+      if (!allowed) {
+        throw new HttpError(404, "Attachment not found.");
+      }
+    } else if (!isManagement && attachment.entityType === "hse_audit") {
+      // Audit evidence visibility follows the audit, not file ownership:
+      // unrelated HSE staff and ordinary employees must not read it.
+      let allowed = false;
+
+      if (canViewAudits(viewer.ikoshRole) && attachment.entityId) {
+        const audit = await HseAudit.findById(attachment.entityId)
+          .select("auditors site")
+          .lean();
+
+        if (audit) {
+          allowed = canAccessHseAudit(viewer, audit);
+        }
+      }
+
+      if (!allowed) {
+        throw new HttpError(404, "Attachment not found.");
+      }
+    } else if (!isManagement && attachment.entityType === "permit") {
+      // Permit evidence visibility follows the permit, not file ownership:
+      // unrelated HSE staff and ordinary employees must not read it.
+      let allowed = false;
+
+      if (canViewPermits(viewer.ikoshRole) && attachment.entityId) {
+        const permit = await Permit.findById(attachment.entityId)
+          .select("site responsiblePerson createdBy")
+          .lean();
+
+        if (permit) {
+          allowed = canAccessPermit(viewer, permit);
+        }
+      }
+
+      if (!allowed) {
+        throw new HttpError(404, "Attachment not found.");
+      }
+    } else if (!isManagement && attachment.entityType === "training_session") {
+      // Training evidence follows the session, not file ownership: ordinary
+      // employees cannot read attendance sheets or certificates in bulk.
+      let allowed = false;
+
+      if (canViewTraining(viewer.ikoshRole) && attachment.entityId) {
+        const trainingSession = await TrainingSession.findById(
+          attachment.entityId,
+        )
+          .select("site createdBy status")
+          .lean();
+
+        if (trainingSession) {
+          allowed = canAccessTrainingSession(viewer, trainingSession);
+        }
+      }
+
+      if (!allowed) {
+        throw new HttpError(404, "Attachment not found.");
+      }
+    } else if (!isManagement && attachment.entityType === "toolbox_talk") {
+      // Talk evidence follows the talk, not file ownership.
+      let allowed = false;
+
+      if (canViewToolboxTalks(viewer.ikoshRole) && attachment.entityId) {
+        const talk = await ToolboxTalk.findById(attachment.entityId)
+          .select("site createdBy status")
+          .lean();
+
+        if (talk) {
+          allowed = canAccessToolboxTalk(viewer, talk);
+        }
+      }
+
+      if (!allowed) {
+        throw new HttpError(404, "Attachment not found.");
+      }
     } else if (!isManagement && !isOwner) {
       let allowed = false;
 
@@ -449,11 +835,15 @@ router.get(
         attachment.entityId
       ) {
         const incident = await Incident.findById(attachment.entityId)
-          .select("site")
+          .select("site reportedBy")
           .lean();
 
         if (incident) {
-          allowed = isSiteAssigned(viewer, incident.site);
+          // Evidence on a colleague's report is investigation material;
+          // ordinary employees may only download evidence for their own.
+          allowed = canAccessIncident(viewer, incident) &&
+            (isManagementRole(viewer.ikoshRole) ||
+              isIncidentReporter(viewer, incident));
         }
       }
 

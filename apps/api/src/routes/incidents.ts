@@ -21,7 +21,12 @@ import {
   type IncidentStatus,
 } from "../lib/hse-constants.js";
 import { canReportIncident } from "../lib/hse-permissions.js";
-import { assertSiteAccess, siteScopeFilter } from "../lib/site-access.js";
+import { assertSiteAccess } from "../lib/site-access.js";
+import {
+  assertIncidentAccess,
+  canViewFullIncident,
+  incidentScopeFilter,
+} from "../lib/incident-access.js";
 import { runAuditedMutation } from "../lib/audit-log.js";
 import { incidentAuditSnapshot } from "../lib/audit-snapshots.js";
 import {
@@ -39,7 +44,9 @@ const router: Router = Router();
 router.use(requireAuth(digitAuth), attachIkoshUser);
 
 // List incidents visible to the caller. HSE management sees every site; other
-// employees see only incidents at their assigned sites.
+// employees see incidents at their assigned sites plus reports they filed
+// themselves, which survive later site reassignment. `mine=true` narrows the
+// register to the caller's own reports without weakening that guarantee.
 router.get("/", async (req: Request, res: Response): Promise<void> => {
   const viewer = getIkoshUser(req);
   const siteId =
@@ -48,12 +55,16 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
     typeof req.query.status === "string" ? req.query.status : undefined;
   const type =
     typeof req.query.type === "string" ? req.query.type : undefined;
+  const mine = req.query.mine === "true";
 
   if (siteId && !Types.ObjectId.isValid(siteId)) {
     throw new HttpError(400, "Invalid site ID.");
   }
 
-  if (siteId) {
+  // A personal register must remain readable after reassignment, so `mine`
+  // deliberately skips the site-assignment check. Asking for someone else's
+  // reports is impossible: the reporter filter is always the caller.
+  if (siteId && !mine) {
     assertSiteAccess(viewer, siteId);
   }
 
@@ -65,16 +76,22 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
     throw new HttpError(400, "Invalid incident type.");
   }
 
-  const filter: Record<string, unknown> = {};
+  const conditions: Record<string, unknown>[] = [];
 
-  if (siteId) {
-    filter.site = new Types.ObjectId(siteId);
+  if (mine) {
+    conditions.push({ reportedBy: viewer._id });
   } else {
-    Object.assign(filter, siteScopeFilter(viewer, "site"));
+    conditions.push(incidentScopeFilter(viewer));
   }
 
-  if (status) filter.status = status;
-  if (type) filter.type = type;
+  if (siteId) conditions.push({ site: new Types.ObjectId(siteId) });
+  if (status) conditions.push({ status });
+  if (type) conditions.push({ type });
+
+  const filter =
+    conditions.length === 1
+      ? conditions[0]
+      : ({ $and: conditions } as Record<string, unknown>);
 
   const { page, limit, skip } = parsePagination(req.query);
 
@@ -89,7 +106,11 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
 
   res.status(200).json({
     success: true,
-    incidents: incidents.map(toIncidentSummary),
+    incidents: incidents.map((incident) =>
+      toIncidentSummary(incident, {
+        full: canViewFullIncident(viewer, incident),
+      }),
+    ),
     pagination: {
       page,
       limit,
@@ -177,11 +198,13 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     throw new HttpError(404, "Incident not found.");
   }
 
-  assertSiteAccess(viewer, incident.site);
+  assertIncidentAccess(viewer, incident);
 
   res.status(200).json({
     success: true,
-    incident: toIncidentSummary(incident),
+    incident: toIncidentSummary(incident, {
+      full: canViewFullIncident(viewer, incident),
+    }),
   });
 });
 
@@ -203,7 +226,7 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
       throw new HttpError(404, "Incident not found.");
     }
 
-    assertSiteAccess(viewer, incident.site);
+    assertIncidentAccess(viewer, incident);
 
     if (viewer.ikoshRole !== "HSE_MANAGER" && viewer.ikoshRole !== "ADMIN") {
       if (String(incident.reportedBy) !== String(viewer._id)) {

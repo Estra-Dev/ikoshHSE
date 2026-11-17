@@ -17,6 +17,12 @@ import contractorPersonnelRouter from "./routes/contractor-personnel.js";
 import attachmentsRouter from "./routes/attachments.js";
 import incidentsRouter from "./routes/incidents.js";
 import correctiveActionsRouter from "./routes/corrective-actions.js";
+import inspectionsRouter from "./routes/inspections.js";
+import riskAssessmentsRouter from "./routes/risk-assessments.js";
+import permitsRouter from "./routes/permits.js";
+import trainingRouter from "./routes/training.js";
+import toolboxTalksRouter from "./routes/toolbox-talks.js";
+import hseAuditsRouter from "./routes/hse-audits.js";
 import hseReferenceRouter from "./routes/hse-reference.js";
 
 export const app: express.Express = express();
@@ -100,6 +106,12 @@ app.use("/api/contractor-personnel", contractorPersonnelRouter);
 app.use("/api/attachments", attachmentsRouter);
 app.use("/api/incidents", incidentsRouter);
 app.use("/api/corrective-actions", correctiveActionsRouter);
+app.use("/api/inspections", inspectionsRouter);
+app.use("/api/risk-assessments", riskAssessmentsRouter);
+app.use("/api/permits", permitsRouter);
+app.use("/api/training", trainingRouter);
+app.use("/api/toolbox-talks", toolboxTalksRouter);
+app.use("/api/audits", hseAuditsRouter);
 
 // HSE reference data, dashboard and audit log.
 app.use("/api/hse", hseReferenceRouter);

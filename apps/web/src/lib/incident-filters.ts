@@ -20,6 +20,8 @@ export interface IncidentFilterState {
   siteId: string;
   status: IncidentStatus | "";
   type: IncidentType | "";
+  /** Shows only reports filed by the current employee. */
+  mine: boolean;
   page: number;
   limit: number;
 }
@@ -28,6 +30,7 @@ export const EMPTY_INCIDENT_FILTERS: IncidentFilterState = {
   siteId: "",
   status: "",
   type: "",
+  mine: false,
   page: 1,
   limit: INCIDENT_PAGE_SIZE,
 };
@@ -61,6 +64,7 @@ export function parseIncidentFilters(
   const rawSiteId = searchParams.get("siteId") ?? "";
   const rawStatus = searchParams.get("status");
   const rawType = searchParams.get("type");
+  const rawMine = searchParams.get("mine");
 
   const page = Number.parseInt(searchParams.get("page") ?? "1", 10);
   const limit = Number.parseInt(
@@ -72,6 +76,7 @@ export function parseIncidentFilters(
     siteId: OBJECT_ID_PATTERN.test(rawSiteId) ? rawSiteId : "",
     status: isIncidentStatus(rawStatus) ? rawStatus : "",
     type: options.lockedType ?? (isIncidentType(rawType) ? rawType : ""),
+    mine: rawMine === "true",
     page: Number.isFinite(page) && page >= 1 ? page : 1,
     limit:
       Number.isFinite(limit) && limit >= 1 && limit <= MAX_INCIDENT_PAGE_SIZE
@@ -102,6 +107,10 @@ export function buildIncidentFilterSearchParams(
     searchParams.set("type", filters.type);
   }
 
+  if (filters.mine) {
+    searchParams.set("mine", "true");
+  }
+
   if (filters.page > 1) {
     searchParams.set("page", String(filters.page));
   }
@@ -121,6 +130,7 @@ export function hasActiveIncidentFilters(
   return Boolean(
     filters.siteId ||
       filters.status ||
+      filters.mine ||
       (!options.lockedType && filters.type),
   );
 }

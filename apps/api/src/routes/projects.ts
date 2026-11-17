@@ -20,6 +20,11 @@ import { isHseManagementRole } from "../lib/ikosh-constants.js";
 import { runAuditedMutation } from "../lib/audit-log.js";
 import { projectAuditSnapshot } from "../lib/audit-snapshots.js";
 import { Project } from "../models/Project.js";
+import { Permit } from "../models/Permit.js";
+import { RiskAssessment } from "../models/RiskAssessment.js";
+import { HseAudit } from "../models/HseAudit.js";
+import { TrainingSession } from "../models/TrainingSession.js";
+import { ToolboxTalk } from "../models/ToolboxTalk.js";
 import { Site } from "../models/Site.js";
 import { toProjectSummary } from "../serializers/project.js";
 
@@ -247,6 +252,61 @@ router.delete(
         throw new HttpError(
           409,
           `Project still has ${sitesCount} site${sitesCount === 1 ? "" : "s"}. Delete or archive them first.`,
+        );
+      }
+
+      const riskAssessmentCount = await RiskAssessment.countDocuments({
+        project: projectId,
+      }).session(session);
+      if (riskAssessmentCount > 0) {
+        throw new HttpError(
+          409,
+          `Project still has ${riskAssessmentCount} risk assessment${riskAssessmentCount === 1 ? "" : "s"} on record. Projects with risk assessment history cannot be deleted.`,
+        );
+      }
+
+      // Permits are retained permanently for the work-authorisation trail, so
+      // any reference — including a terminal permit — blocks deletion.
+      const permitCount = await Permit.countDocuments({
+        project: projectId,
+      }).session(session);
+      if (permitCount > 0) {
+        throw new HttpError(
+          409,
+          `Project still has ${permitCount} permit${permitCount === 1 ? "" : "s"} on record. Permits cannot be deleted.`,
+        );
+      }
+
+      const auditCount = await HseAudit.countDocuments({
+        project: projectId,
+      }).session(session);
+      if (auditCount > 0) {
+        throw new HttpError(
+          409,
+          `Project still has ${auditCount} HSE audit${auditCount === 1 ? "" : "s"} on record. Projects with audit history cannot be deleted.`,
+        );
+      }
+
+      // Training and toolbox talk records are permanent participation
+      // history, so any reference — including terminal records — blocks
+      // deletion.
+      const trainingCount = await TrainingSession.countDocuments({
+        project: projectId,
+      }).session(session);
+      if (trainingCount > 0) {
+        throw new HttpError(
+          409,
+          `Project still has ${trainingCount} training session${trainingCount === 1 ? "" : "s"} on record. Training sessions cannot be deleted.`,
+        );
+      }
+
+      const toolboxTalkCount = await ToolboxTalk.countDocuments({
+        project: projectId,
+      }).session(session);
+      if (toolboxTalkCount > 0) {
+        throw new HttpError(
+          409,
+          `Project still has ${toolboxTalkCount} toolbox talk${toolboxTalkCount === 1 ? "" : "s"} on record. Toolbox talks cannot be deleted.`,
         );
       }
 

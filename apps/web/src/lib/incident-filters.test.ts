@@ -35,6 +35,7 @@ describe("parseIncidentFilters", () => {
       siteId: SITE_ID,
       status: "TRIAGED",
       type: "NEAR_MISS",
+      mine: true,
       page: 3,
       limit: 50,
     };
@@ -70,6 +71,7 @@ describe("buildIncidentFilterSearchParams", () => {
       siteId: SITE_ID,
       status: "CLOSED",
       type: "INCIDENT",
+      mine: true,
       page: 2,
       limit: 50,
     });
@@ -77,6 +79,7 @@ describe("buildIncidentFilterSearchParams", () => {
     expect(params.get("siteId")).toBe(SITE_ID);
     expect(params.get("status")).toBe("CLOSED");
     expect(params.get("type")).toBe("INCIDENT");
+    expect(params.get("mine")).toBe("true");
     expect(params.get("page")).toBe("2");
     expect(params.get("limit")).toBe("50");
   });
@@ -90,6 +93,9 @@ describe("hasActiveIncidentFilters", () => {
     ).toBe(false);
     expect(
       hasActiveIncidentFilters({ ...EMPTY_INCIDENT_FILTERS, status: "REPORTED" }),
+    ).toBe(true);
+    expect(
+      hasActiveIncidentFilters({ ...EMPTY_INCIDENT_FILTERS, mine: true }),
     ).toBe(true);
   });
 

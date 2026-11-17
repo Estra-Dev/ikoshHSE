@@ -31,6 +31,28 @@ const correctiveActionSchema = new Schema(
       ref: "Incident",
       default: null,
     },
+    inspection: {
+      type: Schema.Types.ObjectId,
+      ref: "Inspection",
+      default: null,
+    },
+    audit: {
+      type: Schema.Types.ObjectId,
+      ref: "HseAudit",
+      default: null,
+    },
+    // Identifies the embedded inspection finding this action closes. Kept
+    // alongside `inspection` so provenance can be traced without loading the
+    // inspection document.
+    findingId: {
+      type: Schema.Types.ObjectId,
+      default: null,
+    },
+    // Identifies the embedded audit finding this action closes.
+    auditFindingId: {
+      type: Schema.Types.ObjectId,
+      default: null,
+    },
     project: {
       type: Schema.Types.ObjectId,
       ref: "Project",
@@ -109,6 +131,10 @@ correctiveActionSchema.index({ site: 1, status: 1, dueDate: 1 });
 correctiveActionSchema.index({ assignedTo: 1, status: 1, dueDate: 1 });
 // Reverse lookup of actions raised from a report.
 correctiveActionSchema.index({ incident: 1 });
+// Reverse lookup of actions raised from an inspection finding.
+correctiveActionSchema.index({ inspection: 1 });
+// Reverse lookup of actions raised from an audit finding.
+correctiveActionSchema.index({ audit: 1 });
 
 export type CorrectiveActionDocument = InferSchemaType<
   typeof correctiveActionSchema

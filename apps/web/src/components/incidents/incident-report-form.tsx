@@ -71,6 +71,12 @@ export function IncidentReportForm({
   const [errors, setErrors] = useState<IncidentFormErrors>({});
   const [serverError, setServerError] = useState("");
 
+  const siteOptions = sites.data?.sites ?? [];
+  // A single assigned site is selected by derivation rather than an effect, so
+  // the value can never be missed without causing a cascading render.
+  const soleSiteId =
+    mode === "create" && siteOptions.length === 1 ? siteOptions[0].id : "";
+
   function updateField<K extends keyof IncidentFormValues>(
     key: K,
     value: IncidentFormValues[K],
@@ -85,19 +91,37 @@ export function IncidentReportForm({
     event.preventDefault();
     setServerError("");
 
-    const nextErrors = validateIncidentForm(values, {
+    // The empty initial value keeps server and client markup identical. Fill
+    // it in at submit time so an employee can report without first
+    // discovering the "Use current time" shortcut.
+    const effectiveValues: IncidentFormValues = {
+      ...values,
+      siteId: values.siteId || soleSiteId,
+      occurredAt:
+        values.occurredAt ||
+        toDateTimeLocalValue(new Date().toISOString()),
+    };
+
+    const nextErrors = validateIncidentForm(effectiveValues, {
       requireSite: mode === "create",
     });
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0) {
+      // Reflect the derived defaults so the user can see and correct them.
+      if (
+        effectiveValues.siteId !== values.siteId ||
+        effectiveValues.occurredAt !== values.occurredAt
+      ) {
+        setValues(effectiveValues);
+      }
       return;
     }
 
     try {
       if (mode === "create") {
         const result = await createIncident.mutateAsync(
-          buildCreateIncidentInput(values),
+          buildCreateIncidentInput(effectiveValues),
         );
         router.push(incidentDetailHref(result.incident.type, result.incident.id));
         return;
@@ -109,7 +133,7 @@ export function IncidentReportForm({
 
       const result = await updateIncident.mutateAsync({
         id: incident.id,
-        input: buildUpdateIncidentInput(values),
+        input: buildUpdateIncidentInput(effectiveValues),
       });
       onSaved?.(result.incident);
     } catch (error) {
@@ -130,7 +154,6 @@ export function IncidentReportForm({
   }
 
   const isSubmitting = createIncident.isPending || updateIncident.isPending;
-  const siteOptions = sites.data?.sites ?? [];
   const noSites =
     !sites.isLoading && !sites.isError && siteOptions.length === 0;
   const sitesUnavailable = sites.isError && mode === "create";
@@ -161,7 +184,7 @@ export function IncidentReportForm({
               <SelectField
                 label="Site"
                 id="incident-site"
-                value={values.siteId}
+                value={values.siteId || soleSiteId}
                 onChange={(event) =>
                   updateField("siteId", event.target.value)
                 }
@@ -242,7 +265,7 @@ export function IncidentReportForm({
                   updateField("occurredAt", event.target.value)
                 }
                 error={errors.occurredAt}
-                hint="Local time of the event."
+                hint="Local time of the event. Defaults to now if left blank."
               />
               <button
                 type="button"

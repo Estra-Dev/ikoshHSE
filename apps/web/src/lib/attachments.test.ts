@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALLOWED_ATTACHMENT_MIME_TYPES,
   buildAttachmentSearchParams,
+  buildEntityAttachmentSearchParams,
   formatAttachmentSize,
   isAllowedAttachmentMimeType,
   isImageAttachment,
@@ -82,6 +83,44 @@ describe("buildAttachmentSearchParams", () => {
     expect(params.get("entityId")).toBe("507f1f77bcf86cd799439011");
     expect(params.get("page")).toBe("2");
     expect(params.get("limit")).toBe("50");
+  });
+
+  it("scopes the list to a corrective action", () => {
+    const params = buildEntityAttachmentSearchParams({
+      entityType: "corrective_action",
+      entityId: "507f1f77bcf86cd799439011",
+      page: 1,
+      limit: 100,
+    });
+
+    expect(params.get("entityType")).toBe("corrective_action");
+    expect(params.get("entityId")).toBe("507f1f77bcf86cd799439011");
+    expect(params.get("page")).toBe("1");
+    expect(params.get("limit")).toBe("100");
+  });
+
+  it("scopes the list to an inspection", () => {
+    const params = buildEntityAttachmentSearchParams({
+      entityType: "inspection",
+      entityId: "507f1f77bcf86cd799439011",
+      page: 1,
+      limit: 20,
+    });
+
+    expect(params.get("entityType")).toBe("inspection");
+    expect(params.get("entityId")).toBe("507f1f77bcf86cd799439011");
+  });
+
+  it("scopes the list to a permit", () => {
+    const params = buildEntityAttachmentSearchParams({
+      entityType: "permit",
+      entityId: "507f1f77bcf86cd799439011",
+      page: 1,
+      limit: 20,
+    });
+
+    expect(params.get("entityType")).toBe("permit");
+    expect(params.get("entityId")).toBe("507f1f77bcf86cd799439011");
   });
 
   it("forwards page 1 and page 3 with the attachment page size", () => {

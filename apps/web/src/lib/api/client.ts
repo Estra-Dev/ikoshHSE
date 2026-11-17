@@ -16,7 +16,7 @@ export class ApiError extends Error {
   }
 }
 
-export type ApiMethod = "GET" | "POST" | "PATCH" | "DELETE";
+export type ApiMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 /**
  * Access-token getter from the DigitAuth SDK. Returns the token synchronously
@@ -158,6 +158,8 @@ export function useApi() {
         request<T>(getAccessToken, { method: "POST", path, formData }),
       patch: <T>(path: string, body?: unknown) =>
         request<T>(getAccessToken, { method: "PATCH", path, body }),
+      put: <T>(path: string, body?: unknown) =>
+        request<T>(getAccessToken, { method: "PUT", path, body }),
       delete: <T>(path: string) =>
         request<T>(getAccessToken, { method: "DELETE", path }),
       getBlob: (path: string) => requestBlob(getAccessToken, path),

@@ -25,6 +25,19 @@ export const createCorrectiveActionSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (value.source === "INSPECTION" || value.source === "HSE_AUDIT") {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          value.source === "INSPECTION"
+            ? "Inspection corrective actions must be raised from an inspection finding."
+            : "Audit corrective actions must be raised from an audit finding.",
+        path: ["source"],
+      });
+
+      return;
+    }
+
     if (value.source === "INCIDENT" || value.source === "NEAR_MISS") {
       if (!value.incidentId) {
         ctx.addIssue({

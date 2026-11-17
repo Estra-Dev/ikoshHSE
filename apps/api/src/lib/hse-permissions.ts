@@ -16,6 +16,29 @@ export const HSE_CAPABILITIES = [
   "createCorrectiveActions",
   "manageCorrectiveActions",
   "progressCorrectiveActions",
+  "viewInspections",
+  "createInspections",
+  "conductInspections",
+  "manageInspections",
+  "viewRiskAssessments",
+  "createRiskAssessments",
+  "editRiskAssessments",
+  "manageRiskAssessments",
+  "viewAudits",
+  "createAudits",
+  "conductAudits",
+  "manageAudits",
+  "viewPermits",
+  "createPermits",
+  "operatePermits",
+  "managePermits",
+  "approvePermits",
+  "viewTraining",
+  "createTraining",
+  "manageTraining",
+  "viewToolboxTalks",
+  "createToolboxTalks",
+  "manageToolboxTalks",
   "viewAuditLog",
   "manageEmployees",
   "manageDepartments",
@@ -25,12 +48,40 @@ export type HseCapability = (typeof HSE_CAPABILITIES)[number];
 
 const ROLE_MATRIX: Record<IkoshRole, readonly HseCapability[]> = {
   EMPLOYEE: ["reportIncident"],
-  SUPERVISOR: ["reportIncident", "viewCorrectiveActions"],
+  SUPERVISOR: [
+    "reportIncident",
+    "viewCorrectiveActions",
+    "viewInspections",
+    "viewRiskAssessments",
+    "viewAudits",
+    "viewPermits",
+    "createPermits",
+    "operatePermits",
+    "viewTraining",
+    "viewToolboxTalks",
+    "createToolboxTalks",
+  ],
   HSE_OFFICER: [
     "reportIncident",
     "viewCorrectiveActions",
     "createCorrectiveActions",
     "progressCorrectiveActions",
+    "viewInspections",
+    "createInspections",
+    "conductInspections",
+    "viewRiskAssessments",
+    "createRiskAssessments",
+    "editRiskAssessments",
+    "viewAudits",
+    "createAudits",
+    "conductAudits",
+    "viewPermits",
+    "createPermits",
+    "operatePermits",
+    "viewTraining",
+    "createTraining",
+    "viewToolboxTalks",
+    "createToolboxTalks",
   ],
   HSE_MANAGER: [
     "reportIncident",
@@ -42,6 +93,29 @@ const ROLE_MATRIX: Record<IkoshRole, readonly HseCapability[]> = {
     "createCorrectiveActions",
     "manageCorrectiveActions",
     "progressCorrectiveActions",
+    "viewInspections",
+    "createInspections",
+    "conductInspections",
+    "manageInspections",
+    "viewRiskAssessments",
+    "createRiskAssessments",
+    "editRiskAssessments",
+    "manageRiskAssessments",
+    "viewAudits",
+    "createAudits",
+    "conductAudits",
+    "manageAudits",
+    "viewPermits",
+    "createPermits",
+    "operatePermits",
+    "managePermits",
+    "approvePermits",
+    "viewTraining",
+    "createTraining",
+    "manageTraining",
+    "viewToolboxTalks",
+    "createToolboxTalks",
+    "manageToolboxTalks",
     "viewAuditLog",
   ],
   ADMIN: HSE_CAPABILITIES,
@@ -89,6 +163,108 @@ export function canManageCorrectiveActions(role: string): boolean {
 
 export function canProgressCorrectiveActions(role: string): boolean {
   return hasHsePermission(role, "progressCorrectiveActions");
+}
+
+export function canViewInspections(role: string): boolean {
+  return hasHsePermission(role, "viewInspections");
+}
+
+export function canCreateInspections(role: string): boolean {
+  return hasHsePermission(role, "createInspections");
+}
+
+export function canConductInspections(role: string): boolean {
+  return hasHsePermission(role, "conductInspections");
+}
+
+export function canManageInspections(role: string): boolean {
+  return hasHsePermission(role, "manageInspections");
+}
+
+export function canViewRiskAssessments(role: string): boolean {
+  return hasHsePermission(role, "viewRiskAssessments");
+}
+
+export function canCreateRiskAssessments(role: string): boolean {
+  return hasHsePermission(role, "createRiskAssessments");
+}
+
+export function canEditRiskAssessments(role: string): boolean {
+  return hasHsePermission(role, "editRiskAssessments");
+}
+
+/** Approve, return to draft and archive risk assessments. */
+export function canManageRiskAssessments(role: string): boolean {
+  return hasHsePermission(role, "manageRiskAssessments");
+}
+
+export function canViewAudits(role: string): boolean {
+  return hasHsePermission(role, "viewAudits");
+}
+
+export function canCreateAudits(role: string): boolean {
+  return hasHsePermission(role, "createAudits");
+}
+
+export function canConductAudits(role: string): boolean {
+  return hasHsePermission(role, "conductAudits");
+}
+
+export function canManageAudits(role: string): boolean {
+  return hasHsePermission(role, "manageAudits");
+}
+
+export function canViewPermits(role: string): boolean {
+  return hasHsePermission(role, "viewPermits");
+}
+
+export function canCreatePermits(role: string): boolean {
+  return hasHsePermission(role, "createPermits");
+}
+
+/** Submit, activate, suspend, resume, close and upload evidence. */
+export function canOperatePermits(role: string): boolean {
+  return hasHsePermission(role, "operatePermits");
+}
+
+/** Edit permit metadata while draft and cancel approved permits. */
+export function canManagePermits(role: string): boolean {
+  return hasHsePermission(role, "managePermits");
+}
+
+/** Approve or reject submitted permits. */
+export function canApprovePermits(role: string): boolean {
+  return hasHsePermission(role, "approvePermits");
+}
+
+/** Read the training register and personnel training history. */
+export function canViewTraining(role: string): boolean {
+  return hasHsePermission(role, "viewTraining");
+}
+
+/** Schedule training sessions and record attendance. */
+export function canCreateTraining(role: string): boolean {
+  return hasHsePermission(role, "createTraining");
+}
+
+/** Create/deactivate courses and manage any training session. */
+export function canManageTraining(role: string): boolean {
+  return hasHsePermission(role, "manageTraining");
+}
+
+/** Read the toolbox talk register and personnel talk history. */
+export function canViewToolboxTalks(role: string): boolean {
+  return hasHsePermission(role, "viewToolboxTalks");
+}
+
+/** Schedule toolbox talks and record attendance. */
+export function canCreateToolboxTalks(role: string): boolean {
+  return hasHsePermission(role, "createToolboxTalks");
+}
+
+/** Manage any toolbox talk and its terminal transitions. */
+export function canManageToolboxTalks(role: string): boolean {
+  return hasHsePermission(role, "manageToolboxTalks");
 }
 
 export function canViewAuditLog(role: string): boolean {

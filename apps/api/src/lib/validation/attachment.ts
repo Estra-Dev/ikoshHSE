@@ -25,6 +25,11 @@ export const ATTACHMENT_ENTITY_TYPES = [
   "site",
   "incident",
   "corrective_action",
+  "inspection",
+  "hse_audit",
+  "permit",
+  "training_session",
+  "toolbox_talk",
 ] as const;
 
 export type AttachmentEntityType = (typeof ATTACHMENT_ENTITY_TYPES)[number];

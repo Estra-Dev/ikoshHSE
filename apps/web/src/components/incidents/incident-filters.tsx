@@ -16,8 +16,9 @@ interface IncidentFiltersProps {
 }
 
 /**
- * Register filters. The API supports site, status and report-type filters
- * only; there is deliberately no free-text or date control here.
+ * Register filters. The API supports site, status, report-type and
+ * personal-scope filters only; there is deliberately no free-text or date
+ * control here.
  */
 export function IncidentFilters({
   filters,
@@ -42,6 +43,18 @@ export function IncidentFilters({
             label: `${site.name} · ${site.code}`,
           })),
         ]}
+      />
+
+      <SelectField
+        label="Report scope"
+        id="incident-filter-scope"
+        value={filters.mine ? "mine" : "all"}
+        onChange={(event) => onChange({ mine: event.target.value === "mine" })}
+        options={[
+          { value: "all", label: "Site scope" },
+          { value: "mine", label: "My reports only" },
+        ]}
+        hint="My reports stay visible after a site reassignment."
       />
 
       <SelectField

@@ -4,12 +4,18 @@ import { Types } from "mongoose";
 import { digitAuth } from "../lib/digit-auth.js";
 import { HttpError } from "../lib/http-error.js";
 import {
+  AUDIT_CHECKLIST_RESULTS,
+  AUDIT_FINDING_SEVERITIES,
+  AUDIT_STATUSES,
+  AUDIT_TYPES,
   INCIDENT_CATEGORIES,
   INCIDENT_STATUSES,
   INCIDENT_TYPES,
   INJURED_BODY_PARTS,
   PERMIT_TO_WORK_TYPES,
   PROJECT_STATUSES,
+  RISK_ASSESSMENT_STATUSES,
+  RISK_LEVELS,
   SITE_STATUSES,
   WASTE_TYPES,
 } from "../lib/hse-constants.js";
@@ -67,6 +73,12 @@ router.get(
         wasteTypes: [...WASTE_TYPES],
         projectStatuses: [...PROJECT_STATUSES],
         siteStatuses: [...SITE_STATUSES],
+        riskAssessmentStatuses: [...RISK_ASSESSMENT_STATUSES],
+        riskLevels: [...RISK_LEVELS],
+        auditTypes: [...AUDIT_TYPES],
+        auditStatuses: [...AUDIT_STATUSES],
+        auditChecklistResults: [...AUDIT_CHECKLIST_RESULTS],
+        auditFindingSeverities: [...AUDIT_FINDING_SEVERITIES],
       },
     });
   },

@@ -5,7 +5,11 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { buildAttachmentSearchParams } from "@/lib/attachments";
+import {
+  buildAttachmentSearchParams,
+  buildEntityAttachmentSearchParams,
+  type AttachmentEntityType,
+} from "@/lib/attachments";
 import { useApi } from "./client";
 import { hseKeys } from "./hse";
 import type { AttachmentResponse, AttachmentsResponse } from "./types";
@@ -15,6 +19,11 @@ export const attachmentKeys = {
   listRoot: ["attachments", "list"] as const,
   list: (incidentId: string, page: number) =>
     [...attachmentKeys.listRoot, incidentId, page] as const,
+  entityList: (
+    entityType: AttachmentEntityType,
+    entityId: string,
+    page: number,
+  ) => [...attachmentKeys.listRoot, entityType, entityId, page] as const,
   blobRoot: ["attachments", "blob"] as const,
   blob: (attachmentId: string) =>
     [...attachmentKeys.blobRoot, attachmentId] as const,
@@ -22,6 +31,30 @@ export const attachmentKeys = {
   text: (attachmentId: string) =>
     [...attachmentKeys.textRoot, attachmentId] as const,
 };
+
+/** Evidence attached to any supported entity, newest first. */
+export function useEntityAttachments(
+  entityType: AttachmentEntityType,
+  entityId: string,
+  page = 1,
+) {
+  const api = useApi();
+
+  return useQuery({
+    queryKey: attachmentKeys.entityList(entityType, entityId, page),
+    queryFn: () =>
+      api.get<AttachmentsResponse>(
+        "/api/attachments",
+        buildEntityAttachmentSearchParams({
+          entityType,
+          entityId,
+          page,
+          limit: 100,
+        }),
+      ),
+    enabled: entityId.length > 0,
+  });
+}
 
 /** Evidence attached to one incident, newest first (bounded to 100 items). */
 export function useIncidentAttachments(incidentId: string, page = 1) {
@@ -44,20 +77,32 @@ export interface UploadAttachmentInput {
   description?: string;
 }
 
+export interface UploadEntityAttachmentInput {
+  entityType: AttachmentEntityType;
+  entityId: string;
+  file: File;
+  description?: string;
+}
+
 /**
  * Uploads one file at a time. `entityType` and `entityId` are always supplied
  * together, and the browser sets the multipart boundary automatically.
  */
-export function useUploadIncidentAttachment() {
+export function useUploadEntityAttachment() {
   const api = useApi();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ incidentId, file, description }: UploadAttachmentInput) => {
+    mutationFn: ({
+      entityType,
+      entityId,
+      file,
+      description,
+    }: UploadEntityAttachmentInput) => {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("entityType", "incident");
-      formData.append("entityId", incidentId);
+      formData.append("entityType", entityType);
+      formData.append("entityId", entityId);
 
       const trimmedDescription = description?.trim();
 
@@ -72,6 +117,21 @@ export function useUploadIncidentAttachment() {
       void queryClient.invalidateQueries({ queryKey: hseKeys.dashboardRoot });
     },
   });
+}
+
+export function useUploadIncidentAttachment() {
+  const upload = useUploadEntityAttachment();
+
+  return {
+    ...upload,
+    mutateAsync: ({ incidentId, file, description }: UploadAttachmentInput) =>
+      upload.mutateAsync({
+        entityType: "incident",
+        entityId: incidentId,
+        file,
+        description,
+      }),
+  };
 }
 
 /**

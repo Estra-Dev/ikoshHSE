@@ -5,6 +5,7 @@ import { AuditLog } from "../src/models/AuditLog.js";
 import { Incident } from "../src/models/Incident.js";
 import { Project } from "../src/models/Project.js";
 import { Site } from "../src/models/Site.js";
+import { User } from "../src/models/User.js";
 import { signInAsIkoshUser } from "./helpers.js";
 
 let sequence = 0;
@@ -443,5 +444,142 @@ describe("incidents API", () => {
     });
     expect(serialized).not.toContain("Scaffold boards");
     expect(creation?.after).not.toHaveProperty("description");
+  });
+
+  it("filters the register to the caller's own reports with mine=true", async () => {
+    const site = await createSite();
+    const reporter = await signInAsIkoshUser({
+      ikoshRole: "EMPLOYEE",
+      assignedSites: [site._id],
+    });
+    const colleague = await signInAsIkoshUser({
+      ikoshRole: "EMPLOYEE",
+      assignedSites: [site._id],
+    });
+
+    const own = await reportIncident(reporter.authorization, site._id, {
+      title: "My own report",
+    });
+    await reportIncident(colleague.authorization, site._id, {
+      title: "Colleague report",
+    });
+
+    const response = await request(app)
+      .get("/api/incidents?mine=true")
+      .set("Authorization", reporter.authorization);
+
+    expect(response.status).toBe(200);
+    expect(response.body.incidents).toHaveLength(1);
+    expect(response.body.incidents[0].id).toBe(own.body.incident.id);
+    expect(response.body.incidents[0].reportedBy).toEqual({
+      id: String(reporter.user._id),
+    });
+  });
+
+  it("keeps a reporter's own report readable after site reassignment", async () => {
+    const originalSite = await createSite();
+    const newSite = await createSite();
+    const reporter = await signInAsIkoshUser({
+      ikoshRole: "EMPLOYEE",
+      assignedSites: [originalSite._id],
+    });
+
+    const created = await reportIncident(reporter.authorization, originalSite._id, {
+      title: "Report before reassignment",
+      immediateActions: "Cordoned the area.",
+    });
+    const incidentId = created.body.incident.id;
+
+    await User.updateOne(
+      { _id: reporter.user._id },
+      { $set: { assignedSites: [newSite._id] } },
+    );
+
+    const detail = await request(app)
+      .get(`/api/incidents/${incidentId}`)
+      .set("Authorization", reporter.authorization);
+    const mine = await request(app)
+      .get("/api/incidents?mine=true")
+      .set("Authorization", reporter.authorization);
+    const register = await request(app)
+      .get("/api/incidents")
+      .set("Authorization", reporter.authorization);
+
+    expect(detail.status).toBe(200);
+    expect(detail.body.incident.reportedBy).toEqual({
+      id: String(reporter.user._id),
+    });
+    expect(detail.body.incident.immediateActions).toBe("Cordoned the area.");
+    expect(mine.body.incidents).toHaveLength(1);
+    expect(register.body.incidents).toHaveLength(1);
+  });
+
+  it("withholds colleague reporter identity and investigation details", async () => {
+    const site = await createSite();
+    const reporter = await signInAsIkoshUser({
+      ikoshRole: "EMPLOYEE",
+      assignedSites: [site._id],
+    });
+    const colleague = await signInAsIkoshUser({
+      ikoshRole: "EMPLOYEE",
+      assignedSites: [site._id],
+    });
+    const supervisor = await signInAsIkoshUser({
+      ikoshRole: "SUPERVISOR",
+      assignedSites: [site._id],
+    });
+
+    const created = await reportIncident(reporter.authorization, site._id, {
+      immediateActions: "Cordoned the area.",
+    });
+    const incidentId = created.body.incident.id;
+
+    const colleagueDetail = await request(app)
+      .get(`/api/incidents/${incidentId}`)
+      .set("Authorization", colleague.authorization);
+    const supervisorDetail = await request(app)
+      .get(`/api/incidents/${incidentId}`)
+      .set("Authorization", supervisor.authorization);
+
+    expect(colleagueDetail.status).toBe(200);
+    expect(colleagueDetail.body.incident.reportedBy).toBeNull();
+    expect(colleagueDetail.body.incident.immediateActions).toBeNull();
+    expect(colleagueDetail.body.incident.classifiedBy).toBeNull();
+    expect(colleagueDetail.body.incident.statusUpdatedBy).toBeNull();
+
+    // Supervisors retain their existing site-scoped, full-detail access.
+    expect(supervisorDetail.status).toBe(200);
+    expect(supervisorDetail.body.incident.reportedBy).toEqual({
+      id: String(reporter.user._id),
+    });
+    expect(supervisorDetail.body.incident.immediateActions).toBe(
+      "Cordoned the area.",
+    );
+  });
+
+  it("still denies incident access outside the reporter's sites", async () => {
+    const siteA = await createSite();
+    const siteB = await createSite();
+    const reporter = await signInAsIkoshUser({
+      ikoshRole: "EMPLOYEE",
+      assignedSites: [siteA._id],
+    });
+    const outsider = await signInAsIkoshUser({
+      ikoshRole: "EMPLOYEE",
+      assignedSites: [siteB._id],
+    });
+
+    const created = await reportIncident(reporter.authorization, siteA._id);
+    const incidentId = created.body.incident.id;
+
+    const detail = await request(app)
+      .get(`/api/incidents/${incidentId}`)
+      .set("Authorization", outsider.authorization);
+    const list = await request(app)
+      .get("/api/incidents")
+      .set("Authorization", outsider.authorization);
+
+    expect(detail.status).toBe(404);
+    expect(list.body.incidents).toHaveLength(0);
   });
 });

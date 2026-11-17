@@ -12,6 +12,12 @@ export interface AuditMutationDetails {
 export interface AuditedMutation<T> {
   result: T;
   audit: AuditMutationDetails;
+  /**
+   * Extra audit rows written in the same transaction. Used when one atomic
+   * operation changes two linked records, such as creating a corrective action
+   * from an inspection finding.
+   */
+  additionalAudits?: readonly AuditMutationDetails[];
 }
 
 /**
@@ -35,18 +41,20 @@ export async function runAuditedMutation<T>(
       const outcome = await mutate(session);
       result = outcome.result;
 
+      const audits = [outcome.audit, ...(outcome.additionalAudits ?? [])];
+
       await AuditLog.create(
-        [
-          {
-            actor: actorId,
-            action: outcome.audit.action,
-            entityType: outcome.audit.entityType,
-            entityId: outcome.audit.entityId ?? null,
-            before: outcome.audit.before ?? null,
-            after: outcome.audit.after ?? null,
-          },
-        ],
-        { session },
+        audits.map((audit) => ({
+          actor: actorId,
+          action: audit.action,
+          entityType: audit.entityType,
+          entityId: audit.entityId ?? null,
+          before: audit.before ?? null,
+          after: audit.after ?? null,
+        })),
+        // `ordered: true` is required when inserting multiple documents inside
+        // a session; ordering is irrelevant for append-only audit rows.
+        { session, ordered: true },
       );
     });
   } finally {

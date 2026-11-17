@@ -27,7 +27,13 @@ import {
   canChangePersonnelContractor,
   formatPersonnelName,
 } from "@/lib/contractors";
-import { canManageContractors } from "@/lib/permissions";
+import {
+  canManageContractors,
+  canViewToolboxTalks,
+  canViewTraining,
+} from "@/lib/permissions";
+import { PersonTrainingHistory } from "@/components/training/person-training-history";
+import { PersonToolboxTalkHistory } from "@/components/toolbox-talks/person-toolbox-talk-history";
 
 /** Contractor personnel detail, active deployments and assignment history. */
 export default function ContractorPersonnelDetailPage() {
@@ -222,6 +228,14 @@ export default function ContractorPersonnelDetailPage() {
           activeAssignments={detail.data?.activeAssignments ?? []}
           assignmentHistory={detail.data?.assignmentHistory ?? []}
         />
+      )}
+
+      {canViewTraining(me.data?.employee.ikoshRole) && (
+        <PersonTrainingHistory kind="CONTRACTOR" personId={person.id} />
+      )}
+
+      {canViewToolboxTalks(me.data?.employee.ikoshRole) && (
+        <PersonToolboxTalkHistory kind="CONTRACTOR" personId={person.id} />
       )}
     </div>
   );

@@ -5,8 +5,15 @@ import type { DepartmentDocument } from "../models/Department.js";
 import type { AttachmentDocument } from "../models/Attachment.js";
 import type { CorrectiveActionDocument } from "../models/CorrectiveAction.js";
 import type { IncidentDocument } from "../models/Incident.js";
+import type { InspectionDocument } from "../models/Inspection.js";
+import type { HseAuditDocument } from "../models/HseAudit.js";
+import type { PermitDocument } from "../models/Permit.js";
 import type { ProjectDocument } from "../models/Project.js";
+import type { RiskAssessmentDocument } from "../models/RiskAssessment.js";
 import type { SiteDocument } from "../models/Site.js";
+import type { TrainingCourseDocument } from "../models/TrainingCourse.js";
+import type { TrainingSessionDocument } from "../models/TrainingSession.js";
+import type { ToolboxTalkDocument } from "../models/ToolboxTalk.js";
 import type { UserDocument } from "../models/User.js";
 
 type WithId<T> = T & { _id: unknown };
@@ -179,6 +186,8 @@ export function correctiveActionAuditSnapshot(
   return {
     source: action.source,
     incident: idOf(action.incident),
+    inspection: idOf(action.inspection),
+    findingId: action.findingId ? String(action.findingId) : null,
     project: idOf(action.project),
     site: idOf(action.site),
     assignedTo: idOf(action.assignedTo),
@@ -188,5 +197,255 @@ export function correctiveActionAuditSnapshot(
     completedAt: dateOf(action.completedAt),
     verifiedBy: idOf(action.verifiedBy),
     verifiedAt: dateOf(action.verifiedAt),
+  };
+}
+
+/**
+ * Inspection snapshots record schedule, ownership and workflow metadata only.
+ * Titles, descriptions, recommendations and completion notes are free text and
+ * are deliberately excluded.
+ */
+export function inspectionAuditSnapshot(
+  inspection: WithId<InspectionDocument>,
+): Record<string, unknown> {
+  const findings = inspection.findings ?? [];
+
+  return {
+    project: idOf(inspection.project),
+    site: idOf(inspection.site),
+    inspector: idOf(inspection.inspector),
+    type: inspection.type,
+    status: inspection.status,
+    scheduledFor: dateOf(inspection.scheduledFor),
+    completedAt: dateOf(inspection.completedAt),
+    completedBy: idOf(inspection.completedBy),
+    findingCount: findings.length,
+    linkedCorrectiveActionCount: findings.filter(
+      (finding) => finding.correctiveAction,
+    ).length,
+  };
+}
+
+/**
+ * HSE audit snapshots record schedule, auditor ownership and workflow metadata
+ * only. Titles, descriptions, checklist text/notes, findings and completion
+ * notes are free text and are deliberately excluded.
+ */
+export function hseAuditAuditSnapshot(
+  audit: WithId<HseAuditDocument>,
+): Record<string, unknown> {
+  const findings = audit.findings ?? [];
+  const checklist = audit.checklist ?? [];
+
+  return {
+    project: idOf(audit.project),
+    site: idOf(audit.site),
+    auditors: (audit.auditors ?? []).map((auditor) => idOf(auditor)),
+    type: audit.type,
+    status: audit.status,
+    scheduledFor: dateOf(audit.scheduledFor),
+    completedAt: dateOf(audit.completedAt),
+    completedBy: idOf(audit.completedBy),
+    checklistCount: checklist.length,
+    assessedChecklistCount: checklist.filter(
+      (item) => item.result !== "PENDING",
+    ).length,
+    findingCount: findings.length,
+    linkedCorrectiveActionCount: findings.filter(
+      (finding) => finding.correctiveAction,
+    ).length,
+  };
+}
+
+const RISK_LEVEL_RANK: Record<string, number> = {
+  LOW: 0,
+  MEDIUM: 1,
+  HIGH: 2,
+  CRITICAL: 3,
+};
+
+function highestRiskLevel(levels: readonly string[]): string | null {
+  if (levels.length === 0) {
+    return null;
+  }
+
+  return levels.reduce((highest, level) =>
+    (RISK_LEVEL_RANK[level] ?? -1) > (RISK_LEVEL_RANK[highest] ?? -1)
+      ? level
+      : highest,
+  );
+}
+
+/**
+ * Risk assessment snapshots record workflow and matrix metadata only. Titles,
+ * descriptions, hazard text and control text are free text and are
+ * deliberately excluded.
+ */
+export function riskAssessmentAuditSnapshot(
+  assessment: WithId<RiskAssessmentDocument>,
+): Record<string, unknown> {
+  const hazards = assessment.hazards ?? [];
+
+  return {
+    project: idOf(assessment.project),
+    site: idOf(assessment.site),
+    owner: idOf(assessment.owner),
+    status: assessment.status,
+    reviewDate: dateOf(assessment.reviewDate),
+    hazardCount: hazards.length,
+    highestInherentLevel: highestRiskLevel(
+      hazards.map((hazard) => hazard.inherentLevel),
+    ),
+    highestResidualLevel: highestRiskLevel(
+      hazards.map((hazard) => hazard.residualLevel),
+    ),
+    submittedBy: idOf(assessment.submittedBy),
+    submittedAt: dateOf(assessment.submittedAt),
+    approvedBy: idOf(assessment.approvedBy),
+    approvedAt: dateOf(assessment.approvedAt),
+    archivedBy: idOf(assessment.archivedBy),
+    archivedAt: dateOf(assessment.archivedAt),
+  };
+}
+
+/**
+ * Permit snapshots record scope, validity and workflow metadata only. Work
+ * descriptions, locations, hazard/control text, worker names and the reasons
+ * and notes attached to workflow actions are free text and are deliberately
+ * excluded.
+ */
+export function permitAuditSnapshot(
+  permit: WithId<PermitDocument>,
+): Record<string, unknown> {
+  const closureChecks = permit.closureChecks ?? null;
+
+  return {
+    project: idOf(permit.project),
+    site: idOf(permit.site),
+    workType: permit.workType,
+    status: permit.status,
+    validFrom: dateOf(permit.validFrom),
+    validTo: dateOf(permit.validTo),
+    responsiblePerson: idOf(permit.responsiblePerson),
+    workerCount: (permit.workersInvolved ?? []).length,
+    precautionCount: (permit.requiredPrecautions ?? []).length,
+    hazardCount: (permit.hazards ?? []).length,
+    submittedBy: idOf(permit.submittedBy),
+    submittedAt: dateOf(permit.submittedAt),
+    approvedBy: idOf(permit.approvedBy),
+    approvedAt: dateOf(permit.approvedAt),
+    rejectedBy: idOf(permit.rejectedBy),
+    rejectedAt: dateOf(permit.rejectedAt),
+    activatedBy: idOf(permit.activatedBy),
+    activatedAt: dateOf(permit.activatedAt),
+    suspendedBy: idOf(permit.suspendedBy),
+    suspendedAt: dateOf(permit.suspendedAt),
+    resumedBy: idOf(permit.resumedBy),
+    resumedAt: dateOf(permit.resumedAt),
+    cancelledBy: idOf(permit.cancelledBy),
+    cancelledAt: dateOf(permit.cancelledAt),
+    closedBy: idOf(permit.closedBy),
+    closedAt: dateOf(permit.closedAt),
+    closureChecks: closureChecks
+      ? {
+          workAreaSecured: closureChecks.workAreaSecured,
+          personnelAccountedFor: closureChecks.personnelAccountedFor,
+          equipmentIsolated: closureChecks.equipmentIsolated,
+          siteHandoverCompleted: closureChecks.siteHandoverCompleted,
+        }
+      : null,
+  };
+}
+
+/**
+ * Training course snapshots record catalogue metadata only. Titles and
+ * descriptions are free text and are deliberately excluded.
+ */
+export function trainingCourseAuditSnapshot(
+  course: WithId<TrainingCourseDocument>,
+): Record<string, unknown> {
+  return {
+    code: course.code,
+    category: course.category,
+    defaultDurationMinutes: course.defaultDurationMinutes ?? null,
+    isActive: course.isActive,
+  };
+}
+
+/**
+ * Training session snapshots record scope, schedule, workflow actors and
+ * participant counts. Topics, descriptions, trainer names, participant names
+ * and certificate numbers are free text or personal data and are excluded.
+ */
+export function trainingSessionAuditSnapshot(
+  session: WithId<TrainingSessionDocument>,
+): Record<string, unknown> {
+  const participants = session.participants ?? [];
+
+  return {
+    course: idOf(session.course),
+    project: idOf(session.project),
+    site: idOf(session.site),
+    status: session.status,
+    scheduledDate: dateOf(session.scheduledDate),
+    durationMinutes: session.durationMinutes,
+    participantCount: participants.length,
+    employeeParticipantCount: participants.filter(
+      (participant) => participant.kind === "EMPLOYEE",
+    ).length,
+    contractorParticipantCount: participants.filter(
+      (participant) => participant.kind === "CONTRACTOR",
+    ).length,
+    attendedCount: participants.filter(
+      (participant) => participant.attendance === "ATTENDED",
+    ).length,
+    completedCount: participants.filter(
+      (participant) => participant.completed,
+    ).length,
+    certificateCount: participants.filter(
+      (participant) => Boolean(participant.certificateNumber),
+    ).length,
+    completedBy: idOf(session.completedBy),
+    completedAt: dateOf(session.completedAt),
+    cancelledBy: idOf(session.cancelledBy),
+    cancelledAt: dateOf(session.cancelledAt),
+    createdBy: idOf(session.createdBy),
+  };
+}
+
+/**
+ * Toolbox talk snapshots record scope, schedule, workflow actors and
+ * participant counts. Topics, discussion points, facilitator names,
+ * participant names and notes are excluded.
+ */
+export function toolboxTalkAuditSnapshot(
+  talk: WithId<ToolboxTalkDocument>,
+): Record<string, unknown> {
+  const participants = talk.participants ?? [];
+
+  return {
+    project: idOf(talk.project),
+    site: idOf(talk.site),
+    status: talk.status,
+    scheduledDate: dateOf(talk.scheduledDate),
+    durationMinutes: talk.durationMinutes,
+    participantCount: participants.length,
+    employeeParticipantCount: participants.filter(
+      (participant) => participant.kind === "EMPLOYEE",
+    ).length,
+    contractorParticipantCount: participants.filter(
+      (participant) => participant.kind === "CONTRACTOR",
+    ).length,
+    attendedCount: participants.filter(
+      (participant) => participant.attendance === "ATTENDED",
+    ).length,
+    acknowledgedCount: participants.filter(
+      (participant) => participant.acknowledged,
+    ).length,
+    completedBy: idOf(talk.completedBy),
+    completedAt: dateOf(talk.completedAt),
+    cancelledBy: idOf(talk.cancelledBy),
+    cancelledAt: dateOf(talk.cancelledAt),
+    createdBy: idOf(talk.createdBy),
   };
 }

@@ -13,6 +13,7 @@ import { ArrowLeftIcon } from "@/components/icons";
 import { formatUtcDateTime } from "@/lib/dashboard-format";
 import { formatHseLabel } from "@/lib/hse-dashboard";
 import {
+  canCreateCorrectiveActions,
   canEditIncidentReport,
   canManageIncidentWorkflow,
 } from "@/lib/permissions";
@@ -32,10 +33,37 @@ function actorLabel(
   viewerId: string | undefined,
 ): string {
   if (!id) {
-    return "—";
+    return "Not disclosed";
   }
 
   return viewerId && id === viewerId ? "You" : "Another IKOSH employee";
+}
+
+function TimelineEntry({
+  label,
+  value,
+  done,
+}: {
+  label: string;
+  value: string;
+  done: boolean;
+}) {
+  return (
+    <li className="flex gap-3">
+      <span
+        aria-hidden="true"
+        className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${
+          done ? "bg-emerald-500" : "bg-navy-200"
+        }`}
+      />
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+          {label}
+        </p>
+        <p className="mt-0.5 text-sm text-ink">{value}</p>
+      </div>
+    </li>
+  );
 }
 
 function DetailField({
@@ -83,6 +111,7 @@ export function IncidentDetail({
   const canEdit = incident
     ? canEditIncidentReport(role, viewerId, incident)
     : false;
+  const canRaiseCorrectiveAction = canCreateCorrectiveActions(role);
   const siteNames = new Map(sites.data?.sites.map((site) => [site.id, site.name]));
 
   const backLink = (
@@ -166,6 +195,8 @@ export function IncidentDetail({
   const siteName =
     siteNames.get(incident.site.id) ?? "Site details unavailable";
   const occurredLabel = formatUtcDateTime(incident.occurredAt);
+  // A withheld reporter means the API returned a privacy-safe colleague view.
+  const isFullReport = incident.reportedBy !== null;
 
   return (
     <div className="space-y-6">
@@ -192,13 +223,25 @@ export function IncidentDetail({
             </p>
           </div>
 
-          {canEdit && (
-            <Button
-              variant="secondary"
-              onClick={() => setEditing((current) => !current)}
-            >
-              {editing ? "Cancel editing" : "Edit report"}
-            </Button>
+          {(canRaiseCorrectiveAction || canEdit) && (
+            <div className="flex shrink-0 flex-wrap gap-2">
+              {canRaiseCorrectiveAction && (
+                <Link
+                  href={`/corrective-actions/new?source=${incident.type}&incidentId=${incident.id}`}
+                  className={buttonStyles("secondary")}
+                >
+                  Raise corrective action
+                </Link>
+              )}
+              {canEdit && (
+                <Button
+                  variant="secondary"
+                  onClick={() => setEditing((current) => !current)}
+                >
+                  {editing ? "Cancel editing" : "Edit report"}
+                </Button>
+              )}
+            </div>
           )}
         </div>
       </header>
@@ -235,8 +278,10 @@ export function IncidentDetail({
                   Immediate actions
                 </h2>
                 <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-ink">
-                  {incident.immediateActions ??
-                    "No immediate actions were recorded."}
+                  {isFullReport
+                    ? (incident.immediateActions ??
+                      "No immediate actions were recorded.")
+                    : "Immediate actions are withheld for another employee's report."}
                 </p>
               </section>
             </CardBody>
@@ -255,7 +300,11 @@ export function IncidentDetail({
                 <DetailField label="Location" value={incident.location ?? "—"} />
                 <DetailField
                   label="Reported by"
-                  value={actorLabel(incident.reportedBy.id, viewerId)}
+                  value={
+                    incident.reportedBy
+                      ? actorLabel(incident.reportedBy.id, viewerId)
+                      : "Withheld"
+                  }
                 />
                 <DetailField
                   label="Reported at"
@@ -299,7 +348,16 @@ export function IncidentDetail({
                 />
               </dl>
 
-              {!canEdit && incident.status !== "REPORTED" && (
+              {!isFullReport && (
+                <p className="mt-5 rounded-lg border border-line bg-navy-50/50 px-4 py-3 text-xs leading-5 text-muted">
+                  This is another employee&apos;s report. Reporter identity,
+                  workflow actors and immediate actions are withheld for
+                  privacy; the safety facts are shown so the event can be
+                  learned from.
+                </p>
+              )}
+
+              {isFullReport && !canEdit && incident.status !== "REPORTED" && (
                 <p className="mt-5 rounded-lg border border-line bg-navy-50/50 px-4 py-3 text-xs leading-5 text-muted">
                   Reporter editing is available only while a report is in
                   REPORTED status. HSE management can still correct the record.
@@ -307,6 +365,49 @@ export function IncidentDetail({
               )}
             </CardBody>
           </Card>
+
+          {isFullReport && (
+            <Card>
+              <CardHeader
+                title="Report timeline"
+                description="Follow the report as HSE management triages and closes it."
+              />
+              <CardBody>
+                <ol className="space-y-3 text-sm">
+                  <TimelineEntry
+                    label="Occurred"
+                    value={formatUtcDateTime(incident.occurredAt)}
+                    done
+                  />
+                  <TimelineEntry
+                    label="Reported"
+                    value={formatUtcDateTime(incident.createdAt)}
+                    done
+                  />
+                  <TimelineEntry
+                    label="Classified"
+                    value={
+                      incident.classifiedAt
+                        ? formatUtcDateTime(incident.classifiedAt)
+                        : "Awaiting HSE classification"
+                    }
+                    done={Boolean(incident.classifiedAt)}
+                  />
+                  <TimelineEntry
+                    label="Last status change"
+                    value={
+                      incident.statusUpdatedAt
+                        ? `${formatHseLabel(incident.status)} · ${formatUtcDateTime(
+                            incident.statusUpdatedAt,
+                          )}`
+                        : `${formatHseLabel(incident.status)} · No change recorded`
+                    }
+                    done={Boolean(incident.statusUpdatedAt)}
+                  />
+                </ol>
+              </CardBody>
+            </Card>
+          )}
 
           {canManage && <IncidentClassificationPanel incident={incident} />}
           {canManage && <IncidentStatusPanel incident={incident} />}

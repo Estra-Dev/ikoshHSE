@@ -25,7 +25,13 @@ import {
   useUpdateEmployeeStatus,
 } from "@/lib/api/employees";
 import { IKOSH_ROLES, type EmployeeFull, type IkoshRole } from "@/lib/api/types";
-import { isAdmin } from "@/lib/permissions";
+import {
+  canViewToolboxTalks,
+  canViewTraining,
+  isAdmin,
+} from "@/lib/permissions";
+import { PersonTrainingHistory } from "@/components/training/person-training-history";
+import { PersonToolboxTalkHistory } from "@/components/toolbox-talks/person-toolbox-talk-history";
 
 function formatName(employee: { firstName: string; lastName: string }): string {
   const name = `${employee.firstName} ${employee.lastName}`.trim();
@@ -260,6 +266,10 @@ export default function EmployeeProfilePage() {
   // only includes them for management viewers and the employee themselves.
   const isFull = "ikoshRole" in employee;
   const canManage = isAdmin(viewer?.ikoshRole);
+  const canViewTrainingHistory =
+    !isSelf && canViewTraining(viewer?.ikoshRole);
+  const canViewToolboxHistory =
+    !isSelf && canViewToolboxTalks(viewer?.ikoshRole);
 
   return (
     <div className="space-y-6">
@@ -356,6 +366,14 @@ export default function EmployeeProfilePage() {
           Employment and administrative details are restricted to management
           roles.
         </p>
+      )}
+
+      {canViewTrainingHistory && (
+        <PersonTrainingHistory kind="EMPLOYEE" personId={employee.id} />
+      )}
+
+      {canViewToolboxHistory && (
+        <PersonToolboxTalkHistory kind="EMPLOYEE" personId={employee.id} />
       )}
 
       {canManage && isFull && (

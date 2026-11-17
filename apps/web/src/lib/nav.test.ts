@@ -35,7 +35,7 @@ describe("navigation visibility", () => {
     expect(isNavItemVisible(item, undefined)).toBe(false);
   });
 
-  it("filters the audit log planned item by role", () => {
+  it("filters the audit log item by role", () => {
     const employeeLabels = visibleNavSections("EMPLOYEE").flatMap(
       (section) => section.items.map((item) => item.label),
     );
@@ -74,6 +74,96 @@ describe("navigation visibility", () => {
     for (const role of ["HSE_MANAGER", "ADMIN"] as const) {
       expect(labelsFor(role)).toContain("Contractors");
       expect(labelsFor(role)).toContain("Contractor personnel");
+    }
+  });
+
+  it("shows corrective actions to HSE staff only", () => {
+    const labelsFor = (role: Parameters<typeof visibleNavSections>[0]) =>
+      visibleNavSections(role).flatMap((section) =>
+        section.items.map((item) => item.label),
+      );
+
+    expect(labelsFor("EMPLOYEE")).not.toContain("Corrective actions");
+
+    for (const role of [
+      "SUPERVISOR",
+      "HSE_OFFICER",
+      "HSE_MANAGER",
+      "ADMIN",
+    ] as const) {
+      expect(labelsFor(role)).toContain("Corrective actions");
+    }
+  });
+
+  it("shows inspections to HSE staff only", () => {
+    const labelsFor = (role: Parameters<typeof visibleNavSections>[0]) =>
+      visibleNavSections(role).flatMap((section) =>
+        section.items.map((item) => item.label),
+      );
+
+    expect(labelsFor("EMPLOYEE")).not.toContain("Inspections");
+
+    for (const role of [
+      "SUPERVISOR",
+      "HSE_OFFICER",
+      "HSE_MANAGER",
+      "ADMIN",
+    ] as const) {
+      expect(labelsFor(role)).toContain("Inspections");
+    }
+  });
+
+  it("shows risk assessments to HSE staff only", () => {
+    const labelsFor = (role: Parameters<typeof visibleNavSections>[0]) =>
+      visibleNavSections(role).flatMap((section) =>
+        section.items.map((item) => item.label),
+      );
+
+    expect(labelsFor("EMPLOYEE")).not.toContain("Risk assessments");
+
+    for (const role of [
+      "SUPERVISOR",
+      "HSE_OFFICER",
+      "HSE_MANAGER",
+      "ADMIN",
+    ] as const) {
+      expect(labelsFor(role)).toContain("Risk assessments");
+    }
+  });
+
+  it("shows audits to HSE staff only", () => {
+    const labelsFor = (role: Parameters<typeof visibleNavSections>[0]) =>
+      visibleNavSections(role).flatMap((section) =>
+        section.items.map((item) => item.label),
+      );
+
+    expect(labelsFor("EMPLOYEE")).not.toContain("Audits");
+
+    for (const role of [
+      "SUPERVISOR",
+      "HSE_OFFICER",
+      "HSE_MANAGER",
+      "ADMIN",
+    ] as const) {
+      expect(labelsFor(role)).toContain("Audits");
+    }
+  });
+
+  it("shows permits to work to HSE staff only", () => {
+    const labelsFor = (role: Parameters<typeof visibleNavSections>[0]) =>
+      visibleNavSections(role).flatMap((section) =>
+        section.items.map((item) => item.label),
+      );
+
+    expect(labelsFor("EMPLOYEE")).not.toContain("Permit to work");
+
+    for (const role of [
+      "SUPERVISOR",
+      "HSE_OFFICER",
+      "HSE_MANAGER",
+      "ADMIN",
+    ] as const) {
+      expect(labelsFor(role)).toContain("Permit to work");
     }
   });
 
@@ -136,9 +226,60 @@ describe("active navigation item", () => {
     ).toBe("/contractor-personnel");
   });
 
+  it("activates corrective action destinations", () => {
+    expect(findActiveNavItem("/corrective-actions")?.href).toBe(
+      "/corrective-actions",
+    );
+    expect(findActiveNavItem("/corrective-actions/new")?.href).toBe(
+      "/corrective-actions",
+    );
+    expect(
+      findActiveNavItem("/corrective-actions/507f1f77bcf86cd799439011")?.href,
+    ).toBe("/corrective-actions");
+  });
+
+  it("activates the audit log", () => {
+    expect(findActiveNavItem("/audit-log")?.href).toBe("/audit-log");
+  });
+
+  it("activates inspection destinations", () => {
+    expect(findActiveNavItem("/inspections")?.href).toBe("/inspections");
+    expect(findActiveNavItem("/inspections/new")?.href).toBe("/inspections");
+    expect(
+      findActiveNavItem("/inspections/507f1f77bcf86cd799439011")?.href,
+    ).toBe("/inspections");
+  });
+
+  it("activates risk assessment destinations", () => {
+    expect(findActiveNavItem("/risk-assessments")?.href).toBe(
+      "/risk-assessments",
+    );
+    expect(findActiveNavItem("/risk-assessments/new")?.href).toBe(
+      "/risk-assessments",
+    );
+    expect(
+      findActiveNavItem("/risk-assessments/507f1f77bcf86cd799439011")?.href,
+    ).toBe("/risk-assessments");
+  });
+
+  it("activates audit destinations", () => {
+    expect(findActiveNavItem("/audits")?.href).toBe("/audits");
+    expect(findActiveNavItem("/audits/new")?.href).toBe("/audits");
+    expect(
+      findActiveNavItem("/audits/507f1f77bcf86cd799439011")?.href,
+    ).toBe("/audits");
+  });
+
   it("never activates remaining planned destinations", () => {
-    expect(findActiveNavItem("/inspections")).toBeUndefined();
-    expect(findActiveNavItem("/audit-log")).toBeUndefined();
+    expect(findActiveNavItem("/permit-to-work")).toBeUndefined();
+  });
+
+  it("activates permit destinations", () => {
+    expect(findActiveNavItem("/permits")?.href).toBe("/permits");
+    expect(findActiveNavItem("/permits/new")?.href).toBe("/permits");
+    expect(
+      findActiveNavItem("/permits/507f1f77bcf86cd799439011")?.href,
+    ).toBe("/permits");
   });
 
   it("resolves incident and near-miss routes to their registers", () => {

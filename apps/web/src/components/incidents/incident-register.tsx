@@ -93,6 +93,7 @@ export function IncidentRegister({ mode }: { mode: IncidentRegisterMode }) {
     siteId: filters.siteId,
     status: filters.status,
     type: config.lockedType ?? filters.type,
+    mine: filters.mine,
     page: filters.page,
     limit: filters.limit,
   });
@@ -139,16 +140,24 @@ export function IncidentRegister({ mode }: { mode: IncidentRegisterMode }) {
         title={config.title}
         description={config.description}
         actions={
-          canReport ? (
-            <div className="flex flex-wrap gap-2">
-              {mode === "incidents" && (
-                <Link
-                  href="/near-misses/new"
-                  className={buttonStyles("secondary")}
-                >
-                  Report near miss
-                </Link>
-              )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => void incidents.refetch()}
+              isLoading={incidents.isFetching}
+            >
+              <RefreshIcon size={16} />
+              Refresh
+            </Button>
+            {canReport && mode === "incidents" && (
+              <Link
+                href="/near-misses/new"
+                className={buttonStyles("secondary")}
+              >
+                Report near miss
+              </Link>
+            )}
+            {canReport && (
               <Link
                 href={incidentReportHref(config.reportType)}
                 className={buttonStyles("primary")}
@@ -156,8 +165,8 @@ export function IncidentRegister({ mode }: { mode: IncidentRegisterMode }) {
                 <PlusIcon size={16} />
                 {config.reportLabel}
               </Link>
-            </div>
-          ) : undefined
+            )}
+          </div>
         }
       />
 
@@ -194,7 +203,9 @@ export function IncidentRegister({ mode }: { mode: IncidentRegisterMode }) {
           title={filtersActive ? "No reports match these filters" : config.emptyTitle}
           description={
             filtersActive
-              ? "Adjust the site, status or report type filters to see more results."
+              ? filters.mine
+                ? "You have not filed a report that matches these filters. Clear the personal scope to see site-wide safety updates."
+                : "Adjust the site, status or report type filters to see more results."
               : config.emptyDescription
           }
           action={

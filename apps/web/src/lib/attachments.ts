@@ -93,6 +93,36 @@ export function validateAttachmentFile(file: {
   return null;
 }
 
+/** Entity types that may own evidence in the attachment service. */
+export type AttachmentEntityType =
+  | "incident"
+  | "corrective_action"
+  | "inspection"
+  | "hse_audit"
+  | "permit"
+  | "training_session"
+  | "toolbox_talk";
+
+/** Builds the scoped attachment list query for one entity. */
+export function buildEntityAttachmentSearchParams({
+  entityType,
+  entityId,
+  page = 1,
+  limit = 20,
+}: {
+  entityType: AttachmentEntityType;
+  entityId: string;
+  page?: number;
+  limit?: number;
+}): URLSearchParams {
+  const searchParams = new URLSearchParams();
+  searchParams.set("entityType", entityType);
+  searchParams.set("entityId", entityId);
+  searchParams.set("page", String(page));
+  searchParams.set("limit", String(limit));
+  return searchParams;
+}
+
 /** Builds the scoped attachment list query for one incident. */
 export function buildAttachmentSearchParams({
   incidentId,
@@ -103,12 +133,12 @@ export function buildAttachmentSearchParams({
   page?: number;
   limit?: number;
 }): URLSearchParams {
-  const searchParams = new URLSearchParams();
-  searchParams.set("entityType", "incident");
-  searchParams.set("entityId", incidentId);
-  searchParams.set("page", String(page));
-  searchParams.set("limit", String(limit));
-  return searchParams;
+  return buildEntityAttachmentSearchParams({
+    entityType: "incident",
+    entityId: incidentId,
+    page,
+    limit,
+  });
 }
 
 /** Starts a browser download for an already authenticated blob. */

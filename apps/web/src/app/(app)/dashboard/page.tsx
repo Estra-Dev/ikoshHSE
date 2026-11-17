@@ -11,6 +11,7 @@ import { RefreshIcon } from "@/components/icons";
 import { CategoryMix } from "@/components/dashboard/category-mix";
 import { DashboardKpis } from "@/components/dashboard/dashboard-kpis";
 import { LatestReports } from "@/components/dashboard/latest-reports";
+import { MyReports } from "@/components/dashboard/my-reports";
 import { OutstandingQueues } from "@/components/dashboard/outstanding-queues";
 import { ReportingTrend } from "@/components/dashboard/reporting-trend";
 import { SitePerformance } from "@/components/dashboard/site-performance";
@@ -131,6 +132,8 @@ export default function DashboardPage() {
       />
 
       <DashboardKpis kpis={kpis} />
+
+      <MyReports sites={siteList} />
 
       {dashboardQuery.isError && !dashboard ? (
         <ErrorState
