@@ -24,6 +24,7 @@ import {
 import {
   canCreatePermits,
 } from "../lib/hse-permissions.js";
+import { activePermitPolicyVersion } from "../lib/permit-readiness.js";
 import {
   assertSiteAccess,
   isSiteAssigned,
@@ -371,6 +372,8 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
       workDescription: data.workDescription,
       workType: data.workType,
       status: "DRAFT",
+      // Stamped once, at creation. Never recomputed by later edits.
+      policyVersion: activePermitPolicyVersion(),
       project: resolved.project,
       site: resolved.site,
       location: data.location ?? "",

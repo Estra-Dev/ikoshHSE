@@ -18,6 +18,7 @@ export interface PermitLike {
   workDescription: string;
   workType: string;
   status: string;
+  policyVersion?: number | null;
   project: unknown;
   site: unknown;
   location?: string | null;
@@ -88,6 +89,8 @@ export interface SerializedPermit {
   workDescription: string;
   workType: string;
   status: string;
+  /** Null for permits created before readiness policy activation. */
+  policyVersion: number | null;
   project: ProjectRef;
   site: SiteRef;
   location: string;
@@ -190,6 +193,7 @@ export function toPermitSummary(permit: PermitLike): SerializedPermit {
     workDescription: permit.workDescription,
     workType: permit.workType,
     status: permit.status,
+    policyVersion: permit.policyVersion ?? null,
     project: {
       id: project ? String(project._id) : "",
       name: project?.name ?? null,

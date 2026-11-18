@@ -350,6 +350,7 @@ export function permitAuditSnapshot(
     site: idOf(permit.site),
     workType: permit.workType,
     status: permit.status,
+    policyVersion: permit.policyVersion ?? null,
     validFrom: dateOf(permit.validFrom),
     validTo: dateOf(permit.validTo),
     responsiblePerson: idOf(permit.responsiblePerson),

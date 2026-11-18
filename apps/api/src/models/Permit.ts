@@ -86,6 +86,16 @@ const permitSchema = new Schema(
       default: "DRAFT",
       required: true,
     },
+    // Readiness policy in force when the permit was created. `null` marks a
+    // permit created before policy activation; it is grandfathered and is
+    // never stamped later. Server-controlled: the value is set only by the
+    // create route and is immutable after the document exists.
+    policyVersion: {
+      type: Number,
+      default: null,
+      immutable: true,
+      index: true,
+    },
     project: {
       type: Schema.Types.ObjectId,
       ref: "Project",
@@ -240,6 +250,15 @@ const permitSchema = new Schema(
     versionKey: false,
   },
 );
+
+// Defence in depth on top of the schema's `immutable` option: an existing
+// permit's policyVersion can never be reassigned, including during a link or
+// content edit. Only document creation may set it.
+permitSchema.pre("save", function () {
+  if (!this.isNew && this.isModified("policyVersion")) {
+    throw new Error("Permit policyVersion is immutable after creation.");
+  }
+});
 
 // Register queues and expiry reporting.
 permitSchema.index({ status: 1, validTo: 1, createdAt: -1 });
