@@ -964,3 +964,38 @@ export function canUploadToolboxTalkEvidence(
     (viewerId !== undefined && talk.createdBy?.id === viewerId)
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* HSE reports                                                                */
+/* -------------------------------------------------------------------------- */
+
+/** Reports are visible to HSE staff; the API applies module scope filters. */
+export function canViewReports(role: IkoshRole | undefined): boolean {
+  return isManagementRole(role);
+}
+
+/* -------------------------------------------------------------------------- */
+/* PPE management                                                             */
+/* -------------------------------------------------------------------------- */
+
+/** Read the PPE register, stock levels and personnel PPE history. */
+export function canViewPpe(role: IkoshRole | undefined): boolean {
+  return isManagementRole(role);
+}
+
+/** Issue PPE and record returns, replacements or losses. */
+export function canIssuePpe(role: IkoshRole | undefined): boolean {
+  return isManagementRole(role);
+}
+
+/** Create and adjust stock; HSE officers and above. */
+export function canManagePpeStock(role: IkoshRole | undefined): boolean {
+  return (
+    role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN"
+  );
+}
+
+/** Manage the catalogue; HSE managers and administrators only. */
+export function canManagePpeCatalogue(role: IkoshRole | undefined): boolean {
+  return isHseManagementRole(role);
+}

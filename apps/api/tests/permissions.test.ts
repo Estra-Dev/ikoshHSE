@@ -27,6 +27,9 @@ const EXPECTED: Record<IkoshRole, readonly HseCapability[]> = {
     "viewTraining",
     "viewToolboxTalks",
     "createToolboxTalks",
+    "viewReports",
+    "viewPpe",
+    "issuePpe",
   ],
   HSE_OFFICER: [
     "reportIncident",
@@ -49,6 +52,10 @@ const EXPECTED: Record<IkoshRole, readonly HseCapability[]> = {
     "createTraining",
     "viewToolboxTalks",
     "createToolboxTalks",
+    "viewReports",
+    "viewPpe",
+    "issuePpe",
+    "managePpeStock",
   ],
   HSE_MANAGER: [
     "reportIncident",
@@ -84,6 +91,11 @@ const EXPECTED: Record<IkoshRole, readonly HseCapability[]> = {
     "createToolboxTalks",
     "manageToolboxTalks",
     "viewAuditLog",
+    "viewReports",
+    "viewPpe",
+    "issuePpe",
+    "managePpeStock",
+    "managePpeCatalogue",
   ],
   ADMIN: HSE_CAPABILITIES,
 };

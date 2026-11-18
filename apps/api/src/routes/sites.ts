@@ -31,6 +31,8 @@ import { Permit } from "../models/Permit.js";
 import { HseAudit } from "../models/HseAudit.js";
 import { TrainingSession } from "../models/TrainingSession.js";
 import { ToolboxTalk } from "../models/ToolboxTalk.js";
+import { PpeStock } from "../models/PpeStock.js";
+import { PpeIssuance } from "../models/PpeIssuance.js";
 import { toSiteSummary } from "../serializers/site.js";
 
 const router: Router = Router();
@@ -275,6 +277,8 @@ router.delete(
         permitCount,
         trainingCount,
         toolboxTalkCount,
+        ppeStockCount,
+        ppeIssuanceCount,
       ] = await Promise.all([
         User.countDocuments({ assignedSites: siteId }).session(session),
         ContractorPersonnelSiteAssignment.countDocuments({
@@ -286,6 +290,8 @@ router.delete(
         Permit.countDocuments({ site: siteId }).session(session),
         TrainingSession.countDocuments({ site: siteId }).session(session),
         ToolboxTalk.countDocuments({ site: siteId }).session(session),
+        PpeStock.countDocuments({ site: siteId }).session(session),
+        PpeIssuance.countDocuments({ site: siteId }).session(session),
       ]);
 
       if (
@@ -296,11 +302,13 @@ router.delete(
         auditCount > 0 ||
         permitCount > 0 ||
         trainingCount > 0 ||
-        toolboxTalkCount > 0
+        toolboxTalkCount > 0 ||
+        ppeStockCount > 0 ||
+        ppeIssuanceCount > 0
       ) {
         throw new HttpError(
           409,
-          `Site still has assigned employees, contractor personnel assignment history, risk assessments, audits, permits, training sessions or toolbox talks. Reassign employees or retain dependent records instead of deleting it.`,
+          `Site still has assigned employees, contractor personnel assignment history, risk assessments, audits, permits, training sessions, toolbox talks or PPE records. Reassign employees or retain dependent records instead of deleting it.`,
         );
       }
 

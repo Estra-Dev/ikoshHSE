@@ -178,13 +178,32 @@ describe("navigation visibility", () => {
     ]);
   });
 
-  it("keeps planned items non-clickable", () => {
+  it("keeps any remaining planned items non-clickable", () => {
     const plannedItems = NAV_SECTIONS.flatMap((section) => section.items).filter(
       (item) => item.kind === "planned",
     );
 
-    expect(plannedItems.length).toBeGreaterThan(0);
-    expect(plannedItems.some((item) => "href" in item)).toBe(false);
+    expect(plannedItems.every((item) => !("href" in item))).toBe(true);
+  });
+
+  it("shows reports and PPE to HSE staff only", () => {
+    const labelsFor = (role: Parameters<typeof visibleNavSections>[0]) =>
+      visibleNavSections(role).flatMap((section) =>
+        section.items.map((item) => item.label),
+      );
+
+    expect(labelsFor("EMPLOYEE")).not.toContain("HSE reports");
+    expect(labelsFor("EMPLOYEE")).not.toContain("PPE");
+
+    for (const role of [
+      "SUPERVISOR",
+      "HSE_OFFICER",
+      "HSE_MANAGER",
+      "ADMIN",
+    ] as const) {
+      expect(labelsFor(role)).toContain("HSE reports");
+      expect(labelsFor(role)).toContain("PPE");
+    }
   });
 });
 
@@ -240,6 +259,11 @@ describe("active navigation item", () => {
 
   it("activates the audit log", () => {
     expect(findActiveNavItem("/audit-log")?.href).toBe("/audit-log");
+  });
+
+  it("activates reports and PPE destinations", () => {
+    expect(findActiveNavItem("/reports")?.href).toBe("/reports");
+    expect(findActiveNavItem("/ppe")?.href).toBe("/ppe");
   });
 
   it("activates inspection destinations", () => {

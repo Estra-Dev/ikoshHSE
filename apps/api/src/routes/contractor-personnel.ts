@@ -29,6 +29,7 @@ import {
 import { ContractorPersonnel } from "../models/ContractorPersonnel.js";
 import { ContractorPersonnelSiteAssignment } from "../models/ContractorPersonnelSiteAssignment.js";
 import { Contractor } from "../models/Contractor.js";
+import { PpeIssuance } from "../models/PpeIssuance.js";
 import {
   toContractorPersonnelSiteAssignmentSummary,
   toContractorPersonnelSummary,
@@ -582,11 +583,14 @@ router.delete(
         personnel._id,
         session,
       );
+      const ppeIssuanceCount = await PpeIssuance.countDocuments({
+        contractorPersonnel: personnel._id,
+      }).session(session);
 
-      if (personnel.site || hasAssignmentHistory) {
+      if (personnel.site || hasAssignmentHistory || ppeIssuanceCount > 0) {
         throw new HttpError(
           409,
-          "Cannot delete personnel with site assignment history. Assignment records are retained permanently; deactivate the personnel record instead.",
+          "Cannot delete personnel with assignment history or PPE issuance history. Historical records are retained permanently; deactivate the personnel record instead.",
         );
       }
 

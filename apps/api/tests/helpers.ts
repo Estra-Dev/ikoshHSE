@@ -1,8 +1,12 @@
-import type { AuthenticatedUser } from "@digit-auth/node";
-import type { Types } from "mongoose";
+import type { HydratedDocument, Types } from "mongoose";
 import { User, type UserDocument } from "../src/models/User.js";
-import { Department, type DepartmentDocument } from "../src/models/Department.js";
+import {
+  Department,
+  type DepartmentDocument,
+} from "../src/models/Department.js";
 import { registerDigitAuthUser } from "./digit-auth-stub.ts";
+import { UserRole, type AuthenticatedUser } from "@digit-auth/node";
+import type { EmploymentType, IkoshRole } from "../src/lib/ikosh-constants.js";
 
 let counter = 0;
 
@@ -11,14 +15,14 @@ export interface CreateIkoshUserOptions {
   email?: string;
   firstName?: string;
   lastName?: string;
-  ikoshRole?: string;
+  ikoshRole?: IkoshRole;
   isActive?: boolean;
   department?: Types.ObjectId;
   employeeId?: string;
   jobTitle?: string;
   phone?: string;
   location?: string;
-  employmentType?: string;
+  employmentType?: EmploymentType;
   hireDate?: Date;
   managerId?: Types.ObjectId;
   assignedSites?: Types.ObjectId[];
@@ -30,7 +34,7 @@ export interface CreateIkoshUserOptions {
  */
 export async function createIkoshUser(
   options: CreateIkoshUserOptions = {},
-): Promise<UserDocument> {
+): Promise<HydratedDocument<UserDocument>> {
   counter += 1;
 
   return User.create({
@@ -39,10 +43,16 @@ export async function createIkoshUser(
     email: options.email ?? `employee${counter}@ikosh.test`,
     firstName: options.firstName ?? "Test",
     lastName: options.lastName ?? `Employee ${counter}`,
-    ...(options.ikoshRole !== undefined ? { ikoshRole: options.ikoshRole } : {}),
+    ...(options.ikoshRole !== undefined
+      ? { ikoshRole: options.ikoshRole }
+      : {}),
     ...(options.isActive !== undefined ? { isActive: options.isActive } : {}),
-    ...(options.department !== undefined ? { department: options.department } : {}),
-    ...(options.employeeId !== undefined ? { employeeId: options.employeeId } : {}),
+    ...(options.department !== undefined
+      ? { department: options.department }
+      : {}),
+    ...(options.employeeId !== undefined
+      ? { employeeId: options.employeeId }
+      : {}),
     ...(options.jobTitle !== undefined ? { jobTitle: options.jobTitle } : {}),
     ...(options.phone !== undefined ? { phone: options.phone } : {}),
     ...(options.location !== undefined ? { location: options.location } : {}),
@@ -50,7 +60,9 @@ export async function createIkoshUser(
       ? { employmentType: options.employmentType }
       : {}),
     ...(options.hireDate !== undefined ? { hireDate: options.hireDate } : {}),
-    ...(options.managerId !== undefined ? { managerId: options.managerId } : {}),
+    ...(options.managerId !== undefined
+      ? { managerId: options.managerId }
+      : {}),
     ...(options.assignedSites !== undefined
       ? { assignedSites: options.assignedSites }
       : {}),
@@ -85,7 +97,10 @@ export async function createDepartment(
  */
 export async function signInAsIkoshUser(
   options: CreateIkoshUserOptions = {},
-): Promise<{ user: UserDocument; authorization: string }> {
+): Promise<{
+  user: HydratedDocument<UserDocument>;
+  authorization: string;
+}> {
   const user = await createIkoshUser(options);
   const digitAuthUser = makeDigitAuthUser(user.digitAuthUserId);
   return { user, authorization: signInAs(digitAuthUser) };
@@ -101,7 +116,7 @@ export function makeDigitAuthUser(
     email: `${id}@digitauth.test`,
     firstName: "DigitAuth",
     lastName: "User",
-    role: "USER",
+    role: UserRole.USER,
     status: "ACTIVE",
     emailVerified: true,
     failedLoginAttempts: 0,

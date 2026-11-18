@@ -1582,3 +1582,313 @@ export interface UpdateToolboxTalkStatusInput {
   status: AttendanceRecordStatus;
   reason?: string;
 }
+
+/* -------------------------------------------------------------------------- */
+/* PPE management                                                             */
+/* -------------------------------------------------------------------------- */
+
+export const PPE_CATEGORIES = [
+  "HEAD_PROTECTION",
+  "EYE_FACE_PROTECTION",
+  "HEARING_PROTECTION",
+  "RESPIRATORY_PROTECTION",
+  "HAND_PROTECTION",
+  "FOOT_PROTECTION",
+  "BODY_PROTECTION",
+  "FALL_PROTECTION",
+  "HIGH_VISIBILITY",
+  "OTHER",
+] as const;
+
+export type PpeCategory = (typeof PPE_CATEGORIES)[number];
+
+export const PPE_UNITS = ["EACH", "PAIR", "SET", "BOX"] as const;
+
+export type PpeUnit = (typeof PPE_UNITS)[number];
+
+export const PPE_CONDITIONS = [
+  "NEW",
+  "GOOD",
+  "FAIR",
+  "POOR",
+  "DAMAGED",
+] as const;
+
+export type PpeCondition = (typeof PPE_CONDITIONS)[number];
+
+export const PPE_ISSUANCE_STATUSES = [
+  "ISSUED",
+  "RETURNED",
+  "REPLACED",
+  "LOST",
+] as const;
+
+export type PpeIssuanceStatus = (typeof PPE_ISSUANCE_STATUSES)[number];
+
+export interface PpeItemRef {
+  id: string;
+  code: string | null;
+  name: string | null;
+  category: PpeCategory | null;
+  size: string | null;
+  unit: PpeUnit | null;
+}
+
+export interface PpeSiteRef {
+  id: string;
+  name: string | null;
+  code: string | null;
+}
+
+export interface PpeProjectRef {
+  id: string;
+  name: string | null;
+}
+
+export interface PpeItemSummary {
+  id: string;
+  code: string;
+  name: string;
+  category: PpeCategory;
+  size: string | null;
+  unit: PpeUnit;
+  description: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PpeItemsResponse {
+  success: boolean;
+  items: PpeItemSummary[];
+}
+
+export interface PpeItemResponse {
+  success: boolean;
+  item: PpeItemSummary;
+}
+
+export interface PpeStockSummary {
+  id: string;
+  item: PpeItemRef;
+  project: PpeProjectRef;
+  site: PpeSiteRef;
+  quantityOnHand: number;
+  minimumQuantity: number;
+  isLowStock: boolean;
+  isOutOfStock: boolean;
+  updatedBy: WorkforceUserRef | null;
+  updatedAt: string;
+}
+
+export interface PpeStockListResponse {
+  success: boolean;
+  stock: PpeStockSummary[];
+  summary: { total: number; low: number; outOfStock: number };
+  pagination: ApiPagination;
+}
+
+export interface PpeStockResponse {
+  success: boolean;
+  stock: PpeStockSummary;
+}
+
+export interface PpeIssuanceRecipient {
+  kind: WorkforceParticipantKind;
+  employeeId: string | null;
+  contractorPersonnelId: string | null;
+  contractor: { id: string; name: string | null } | null;
+  name: string;
+}
+
+export interface PpeIssuanceSummary {
+  id: string;
+  recipient: PpeIssuanceRecipient;
+  item: PpeItemRef;
+  project: PpeProjectRef;
+  site: PpeSiteRef;
+  quantity: number;
+  conditionAtIssue: PpeCondition;
+  status: PpeIssuanceStatus;
+  issuedOn: string;
+  issuedBy: WorkforceUserRef | null;
+  notes: string | null;
+  returnedOn: string | null;
+  returnedBy: WorkforceUserRef | null;
+  returnCondition: PpeCondition | null;
+  returnNotes: string | null;
+  restocked: boolean;
+  lostOn: string | null;
+  lostBy: WorkforceUserRef | null;
+  lostNotes: string | null;
+  replacementFor: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PpeIssuancesResponse {
+  success: boolean;
+  issuances: PpeIssuanceSummary[];
+  pagination: ApiPagination;
+}
+
+export interface PpeIssuanceResponse {
+  success: boolean;
+  issuance: PpeIssuanceSummary;
+}
+
+export interface PpePersonHistoryResponse {
+  success: boolean;
+  records: PpeIssuanceSummary[];
+  pagination: ApiPagination;
+}
+
+export interface CreatePpeItemInput {
+  code: string;
+  name: string;
+  category: PpeCategory;
+  size?: string;
+  unit: PpeUnit;
+  description?: string;
+}
+
+export interface UpdatePpeItemInput {
+  name?: string;
+  category?: PpeCategory;
+  size?: string | null;
+  unit?: PpeUnit;
+  description?: string;
+  isActive?: boolean;
+}
+
+export interface CreatePpeStockInput {
+  itemId: string;
+  siteId: string;
+  quantityOnHand: number;
+  minimumQuantity: number;
+  reason: string;
+}
+
+export interface UpdatePpeStockInput {
+  quantityOnHand?: number;
+  minimumQuantity?: number;
+  reason: string;
+}
+
+export interface IssuePpeInput {
+  itemId: string;
+  siteId: string;
+  recipient: {
+    kind: WorkforceParticipantKind;
+    employeeId?: string;
+    contractorPersonnelId?: string;
+  };
+  quantity: number;
+  conditionAtIssue: PpeCondition;
+  issuedOn?: string;
+  notes?: string;
+}
+
+export interface ReturnPpeInput {
+  returnedOn?: string;
+  returnCondition: PpeCondition;
+  restock: boolean;
+  notes?: string;
+}
+
+export interface ReplacePpeInput {
+  issuedOn?: string;
+  conditionAtIssue?: PpeCondition;
+  notes?: string;
+}
+
+export interface LostPpeInput {
+  lostOn?: string;
+  notes?: string;
+}
+
+/* -------------------------------------------------------------------------- */
+/* HSE reports                                                                */
+/* -------------------------------------------------------------------------- */
+
+export interface HseReportScope {
+  projectId: string | null;
+  siteId: string | null;
+  from: string | null;
+  to: string | null;
+}
+
+export interface HseReport {
+  scope: HseReportScope;
+  generatedAt: string;
+  incidents: {
+    total: number;
+    incidents: number;
+    nearMisses: number;
+    byStatus: Record<string, number>;
+    byCategory: { category: string; count: number }[];
+    unclassified: number;
+  };
+  inspections: {
+    total: number;
+    byStatus: Record<string, number>;
+    findingsTotal: number;
+    findingsBySeverity: Record<string, number>;
+  };
+  audits: {
+    total: number;
+    byStatus: Record<string, number>;
+    byType: Record<string, number>;
+    findingsTotal: number;
+    findingsBySeverity: Record<string, number>;
+    checklistByResult: Record<string, number>;
+  };
+  permits: {
+    total: number;
+    byStatus: Record<string, number>;
+    byWorkType: { workType: string; count: number }[];
+    expiringSoon: number;
+  };
+  correctiveActions: {
+    total: number;
+    byStatus: Record<string, number>;
+    overdue: number;
+  };
+  riskAssessments: {
+    total: number;
+    byStatus: Record<string, number>;
+    hazardsTotal: number;
+    hazardsByResidualLevel: Record<string, number>;
+    reviewsDue: number;
+  };
+  training: {
+    sessions: number;
+    byStatus: Record<string, number>;
+    attendance: {
+      invited: number;
+      attended: number;
+      absent: number;
+      completed: number;
+      certificatesIssued: number;
+      employees: number;
+      contractors: number;
+    };
+  };
+  toolboxTalks: {
+    talks: number;
+    byStatus: Record<string, number>;
+    attendance: {
+      invited: number;
+      attended: number;
+      absent: number;
+      acknowledged: number;
+      employees: number;
+      contractors: number;
+    };
+  };
+}
+
+export interface HseReportResponse {
+  success: boolean;
+  data: HseReport;
+}

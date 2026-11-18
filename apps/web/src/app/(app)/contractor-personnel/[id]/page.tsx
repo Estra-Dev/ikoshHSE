@@ -29,11 +29,13 @@ import {
 } from "@/lib/contractors";
 import {
   canManageContractors,
+  canViewPpe,
   canViewToolboxTalks,
   canViewTraining,
 } from "@/lib/permissions";
 import { PersonTrainingHistory } from "@/components/training/person-training-history";
 import { PersonToolboxTalkHistory } from "@/components/toolbox-talks/person-toolbox-talk-history";
+import { PersonPpeHistory } from "@/components/ppe/person-ppe-history";
 
 /** Contractor personnel detail, active deployments and assignment history. */
 export default function ContractorPersonnelDetailPage() {
@@ -236,6 +238,10 @@ export default function ContractorPersonnelDetailPage() {
 
       {canViewToolboxTalks(me.data?.employee.ikoshRole) && (
         <PersonToolboxTalkHistory kind="CONTRACTOR" personId={person.id} />
+      )}
+
+      {canViewPpe(me.data?.employee.ikoshRole) && (
+        <PersonPpeHistory kind="CONTRACTOR" personId={person.id} />
       )}
     </div>
   );

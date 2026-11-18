@@ -23,6 +23,8 @@ import permitsRouter from "./routes/permits.js";
 import trainingRouter from "./routes/training.js";
 import toolboxTalksRouter from "./routes/toolbox-talks.js";
 import hseAuditsRouter from "./routes/hse-audits.js";
+import hseReportsRouter from "./routes/hse-reports.js";
+import ppeRouter from "./routes/ppe.js";
 import hseReferenceRouter from "./routes/hse-reference.js";
 
 export const app: express.Express = express();
@@ -112,8 +114,10 @@ app.use("/api/permits", permitsRouter);
 app.use("/api/training", trainingRouter);
 app.use("/api/toolbox-talks", toolboxTalksRouter);
 app.use("/api/audits", hseAuditsRouter);
+app.use("/api/ppe", ppeRouter);
 
-// HSE reference data, dashboard and audit log.
+// HSE reports, reference data, dashboard and audit log.
+app.use("/api/hse/reports", hseReportsRouter);
 app.use("/api/hse", hseReferenceRouter);
 
 // Centralized error handler: never expose internal stack traces to clients.

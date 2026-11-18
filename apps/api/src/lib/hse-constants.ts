@@ -870,3 +870,97 @@ export function isParticipantAttendanceState(
     (PARTICIPANT_ATTENDANCE_STATES as readonly string[]).includes(value)
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* PPE management                                                             */
+/* -------------------------------------------------------------------------- */
+
+/** PPE catalogue categories. Stable because historical stock filters on them. */
+export const PPE_CATEGORIES = [
+  "HEAD_PROTECTION",
+  "EYE_FACE_PROTECTION",
+  "HEARING_PROTECTION",
+  "RESPIRATORY_PROTECTION",
+  "HAND_PROTECTION",
+  "FOOT_PROTECTION",
+  "BODY_PROTECTION",
+  "FALL_PROTECTION",
+  "HIGH_VISIBILITY",
+  "OTHER",
+] as const;
+
+export type PpeCategory = (typeof PPE_CATEGORIES)[number];
+
+export function isPpeCategory(value: unknown): value is PpeCategory {
+  return (
+    typeof value === "string" &&
+    (PPE_CATEGORIES as readonly string[]).includes(value)
+  );
+}
+
+/** Unit in which a PPE catalogue item is counted and issued. */
+export const PPE_UNITS = ["EACH", "PAIR", "SET", "BOX"] as const;
+
+export type PpeUnit = (typeof PPE_UNITS)[number];
+
+export function isPpeUnit(value: unknown): value is PpeUnit {
+  return (
+    typeof value === "string" && (PPE_UNITS as readonly string[]).includes(value)
+  );
+}
+
+/** Condition recorded when PPE is issued or returned. */
+export const PPE_CONDITIONS = [
+  "NEW",
+  "GOOD",
+  "FAIR",
+  "POOR",
+  "DAMAGED",
+] as const;
+
+export type PpeCondition = (typeof PPE_CONDITIONS)[number];
+
+export function isPpeCondition(value: unknown): value is PpeCondition {
+  return (
+    typeof value === "string" &&
+    (PPE_CONDITIONS as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Issuance lifecycle. ISSUED is the only open state; RETURNED, REPLACED and
+ * LOST are terminal and preserve the historical record.
+ */
+export const PPE_ISSUANCE_STATUSES = [
+  "ISSUED",
+  "RETURNED",
+  "REPLACED",
+  "LOST",
+] as const;
+
+export type PpeIssuanceStatus = (typeof PPE_ISSUANCE_STATUSES)[number];
+
+export function isPpeIssuanceStatus(
+  value: unknown,
+): value is PpeIssuanceStatus {
+  return (
+    typeof value === "string" &&
+    (PPE_ISSUANCE_STATUSES as readonly string[]).includes(value)
+  );
+}
+
+/** Conditions that may be returned to usable stock. */
+export const PPE_RESTOCKABLE_CONDITIONS = [
+  "NEW",
+  "GOOD",
+  "FAIR",
+] as const;
+
+export function isPpeRestockableCondition(
+  value: unknown,
+): value is (typeof PPE_RESTOCKABLE_CONDITIONS)[number] {
+  return (
+    typeof value === "string" &&
+    (PPE_RESTOCKABLE_CONDITIONS as readonly string[]).includes(value)
+  );
+}

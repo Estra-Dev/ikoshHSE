@@ -25,6 +25,8 @@ import { RiskAssessment } from "../models/RiskAssessment.js";
 import { HseAudit } from "../models/HseAudit.js";
 import { TrainingSession } from "../models/TrainingSession.js";
 import { ToolboxTalk } from "../models/ToolboxTalk.js";
+import { PpeStock } from "../models/PpeStock.js";
+import { PpeIssuance } from "../models/PpeIssuance.js";
 import { Site } from "../models/Site.js";
 import { toProjectSummary } from "../serializers/project.js";
 
@@ -307,6 +309,28 @@ router.delete(
         throw new HttpError(
           409,
           `Project still has ${toolboxTalkCount} toolbox talk${toolboxTalkCount === 1 ? "" : "s"} on record. Toolbox talks cannot be deleted.`,
+        );
+      }
+
+      // PPE stock and issuance history are operationally significant and must
+      // survive project deletion.
+      const ppeStockCount = await PpeStock.countDocuments({
+        project: projectId,
+      }).session(session);
+      if (ppeStockCount > 0) {
+        throw new HttpError(
+          409,
+          `Project still has ${ppeStockCount} PPE stock record${ppeStockCount === 1 ? "" : "s"}. Projects with PPE inventory cannot be deleted.`,
+        );
+      }
+
+      const ppeIssuanceCount = await PpeIssuance.countDocuments({
+        project: projectId,
+      }).session(session);
+      if (ppeIssuanceCount > 0) {
+        throw new HttpError(
+          409,
+          `Project still has ${ppeIssuanceCount} PPE issuance record${ppeIssuanceCount === 1 ? "" : "s"}. PPE issuance history cannot be deleted.`,
         );
       }
 

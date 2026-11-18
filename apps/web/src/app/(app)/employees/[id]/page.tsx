@@ -26,12 +26,14 @@ import {
 } from "@/lib/api/employees";
 import { IKOSH_ROLES, type EmployeeFull, type IkoshRole } from "@/lib/api/types";
 import {
+  canViewPpe,
   canViewToolboxTalks,
   canViewTraining,
   isAdmin,
 } from "@/lib/permissions";
 import { PersonTrainingHistory } from "@/components/training/person-training-history";
 import { PersonToolboxTalkHistory } from "@/components/toolbox-talks/person-toolbox-talk-history";
+import { PersonPpeHistory } from "@/components/ppe/person-ppe-history";
 
 function formatName(employee: { firstName: string; lastName: string }): string {
   const name = `${employee.firstName} ${employee.lastName}`.trim();
@@ -270,6 +272,7 @@ export default function EmployeeProfilePage() {
     !isSelf && canViewTraining(viewer?.ikoshRole);
   const canViewToolboxHistory =
     !isSelf && canViewToolboxTalks(viewer?.ikoshRole);
+  const canViewPpeHistory = !isSelf && canViewPpe(viewer?.ikoshRole);
 
   return (
     <div className="space-y-6">
@@ -374,6 +377,10 @@ export default function EmployeeProfilePage() {
 
       {canViewToolboxHistory && (
         <PersonToolboxTalkHistory kind="EMPLOYEE" personId={employee.id} />
+      )}
+
+      {canViewPpeHistory && (
+        <PersonPpeHistory kind="EMPLOYEE" personId={employee.id} />
       )}
 
       {canManage && isFull && (

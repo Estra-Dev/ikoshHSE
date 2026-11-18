@@ -40,6 +40,11 @@ export const HSE_CAPABILITIES = [
   "createToolboxTalks",
   "manageToolboxTalks",
   "viewAuditLog",
+  "viewReports",
+  "viewPpe",
+  "issuePpe",
+  "managePpeStock",
+  "managePpeCatalogue",
   "manageEmployees",
   "manageDepartments",
 ] as const;
@@ -60,6 +65,9 @@ const ROLE_MATRIX: Record<IkoshRole, readonly HseCapability[]> = {
     "viewTraining",
     "viewToolboxTalks",
     "createToolboxTalks",
+    "viewReports",
+    "viewPpe",
+    "issuePpe",
   ],
   HSE_OFFICER: [
     "reportIncident",
@@ -82,6 +90,10 @@ const ROLE_MATRIX: Record<IkoshRole, readonly HseCapability[]> = {
     "createTraining",
     "viewToolboxTalks",
     "createToolboxTalks",
+    "viewReports",
+    "viewPpe",
+    "issuePpe",
+    "managePpeStock",
   ],
   HSE_MANAGER: [
     "reportIncident",
@@ -117,6 +129,11 @@ const ROLE_MATRIX: Record<IkoshRole, readonly HseCapability[]> = {
     "createToolboxTalks",
     "manageToolboxTalks",
     "viewAuditLog",
+    "viewReports",
+    "viewPpe",
+    "issuePpe",
+    "managePpeStock",
+    "managePpeCatalogue",
   ],
   ADMIN: HSE_CAPABILITIES,
 };
@@ -269,6 +286,31 @@ export function canManageToolboxTalks(role: string): boolean {
 
 export function canViewAuditLog(role: string): boolean {
   return hasHsePermission(role, "viewAuditLog");
+}
+
+/** Read the cross-module HSE reports. */
+export function canViewReports(role: string): boolean {
+  return hasHsePermission(role, "viewReports");
+}
+
+/** Read the PPE register, stock and personnel PPE history. */
+export function canViewPpe(role: string): boolean {
+  return hasHsePermission(role, "viewPpe");
+}
+
+/** Issue, return, replace and mark PPE lost. */
+export function canIssuePpe(role: string): boolean {
+  return hasHsePermission(role, "issuePpe");
+}
+
+/** Create and adjust per-site PPE stock levels. */
+export function canManagePpeStock(role: string): boolean {
+  return hasHsePermission(role, "managePpeStock");
+}
+
+/** Create and deactivate PPE catalogue items. */
+export function canManagePpeCatalogue(role: string): boolean {
+  return hasHsePermission(role, "managePpeCatalogue");
 }
 
 export function canManageEmployees(role: string): boolean {

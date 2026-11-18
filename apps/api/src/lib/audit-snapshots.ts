@@ -8,6 +8,9 @@ import type { IncidentDocument } from "../models/Incident.js";
 import type { InspectionDocument } from "../models/Inspection.js";
 import type { HseAuditDocument } from "../models/HseAudit.js";
 import type { PermitDocument } from "../models/Permit.js";
+import type { PpeIssuanceDocument } from "../models/PpeIssuance.js";
+import type { PpeItemDocument } from "../models/PpeItem.js";
+import type { PpeStockDocument } from "../models/PpeStock.js";
 import type { ProjectDocument } from "../models/Project.js";
 import type { RiskAssessmentDocument } from "../models/RiskAssessment.js";
 import type { SiteDocument } from "../models/Site.js";
@@ -447,5 +450,67 @@ export function toolboxTalkAuditSnapshot(
     cancelledBy: idOf(talk.cancelledBy),
     cancelledAt: dateOf(talk.cancelledAt),
     createdBy: idOf(talk.createdBy),
+  };
+}
+
+/** PPE catalogue snapshots exclude free-text descriptions. */
+export function ppeItemAuditSnapshot(
+  item: WithId<PpeItemDocument>,
+): Record<string, unknown> {
+  return {
+    code: item.code,
+    name: item.name,
+    category: item.category,
+    size: item.size ?? null,
+    unit: item.unit,
+    isActive: item.isActive,
+  };
+}
+
+/** Stock snapshots capture quantities and the recorded adjustment reason. */
+export function ppeStockAuditSnapshot(
+  stock: WithId<PpeStockDocument>,
+  reason?: string | null,
+): Record<string, unknown> {
+  return {
+    project: idOf(stock.project),
+    site: idOf(stock.site),
+    item: idOf(stock.item),
+    quantityOnHand: stock.quantityOnHand,
+    minimumQuantity: stock.minimumQuantity,
+    updatedBy: idOf(stock.updatedBy),
+    ...(reason ? { reason } : {}),
+  };
+}
+
+/**
+ * Issuance snapshots record the workforce reference kind and ids, item,
+ * quantity and lifecycle state. Recipient names and notes are excluded.
+ */
+export function ppeIssuanceAuditSnapshot(
+  issuance: WithId<PpeIssuanceDocument>,
+  reason?: string | null,
+): Record<string, unknown> {
+  return {
+    project: idOf(issuance.project),
+    site: idOf(issuance.site),
+    item: idOf(issuance.item),
+    kind: issuance.kind,
+    employee: idOf(issuance.employee),
+    contractorPersonnel: idOf(issuance.contractorPersonnel),
+    contractor: idOf(issuance.contractor),
+    quantity: issuance.quantity,
+    conditionAtIssue: issuance.conditionAtIssue,
+    status: issuance.status,
+    issuedOn: dateOf(issuance.issuedOn),
+    issuedBy: idOf(issuance.issuedBy),
+    returnedOn: dateOf(issuance.returnedOn),
+    returnedBy: idOf(issuance.returnedBy),
+    returnCondition: issuance.returnCondition ?? null,
+    restocked: issuance.restocked,
+    lostOn: dateOf(issuance.lostOn),
+    lostBy: idOf(issuance.lostBy),
+    replacementFor: idOf(issuance.replacementFor),
+    ...(reason ? { reason } : {}),
   };
 }

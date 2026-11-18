@@ -172,9 +172,11 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     label: "Assurance",
     items: [
       {
-        kind: "planned",
+        kind: "link",
+        href: "/reports",
         label: "HSE reports",
         icon: "reports",
+        roles: ["SUPERVISOR", "HSE_OFFICER", "HSE_MANAGER", "ADMIN"],
       },
       {
         kind: "link",
@@ -189,9 +191,11 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         icon: "toolbox",
       },
       {
-        kind: "planned",
+        kind: "link",
+        href: "/ppe",
         label: "PPE",
         icon: "ppe",
+        roles: ["SUPERVISOR", "HSE_OFFICER", "HSE_MANAGER", "ADMIN"],
       },
       {
         kind: "link",
