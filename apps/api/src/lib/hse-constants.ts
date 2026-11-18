@@ -345,8 +345,9 @@ export function isWasteType(value: unknown): value is WasteType {
 /**
  * Corrective action origin. Incident and near-miss sources must reference the
  * originating report so provenance can never be rewritten later. INSPECTION
- * actions are only created through an inspection finding so the source
- * inspection and finding cannot be forged.
+ * and HSE_AUDIT actions are only created through their finding endpoints, and
+ * RISK_ASSESSMENT actions only through a hazard treatment-action endpoint, so
+ * the source record and finding cannot be forged.
  */
 export const CORRECTIVE_ACTION_SOURCES = [
   "INCIDENT",
@@ -354,6 +355,7 @@ export const CORRECTIVE_ACTION_SOURCES = [
   "HSE_OBSERVATION",
   "INSPECTION",
   "HSE_AUDIT",
+  "RISK_ASSESSMENT",
   "OTHER",
 ] as const;
 
@@ -560,6 +562,29 @@ export function canTransitionRiskAssessmentStatus(
   to: RiskAssessmentStatus,
 ): boolean {
   return RISK_ASSESSMENT_STATUS_TRANSITIONS[from].includes(to);
+}
+
+/**
+ * Why a controlled revision was raised. Trigger is mandatory on every revision
+ * so the reason for re-assessment is auditable; INCIDENT revisions may also
+ * reference the incident that prompted them.
+ */
+export const RISK_REVIEW_TRIGGERS = [
+  "CHANGED_CONDITIONS",
+  "INCIDENT",
+  "REVIEW_EXPIRED",
+  "OTHER",
+] as const;
+
+export type RiskReviewTrigger = (typeof RISK_REVIEW_TRIGGERS)[number];
+
+export function isRiskReviewTrigger(
+  value: unknown,
+): value is RiskReviewTrigger {
+  return (
+    typeof value === "string" &&
+    (RISK_REVIEW_TRIGGERS as readonly string[]).includes(value)
+  );
 }
 
 /**

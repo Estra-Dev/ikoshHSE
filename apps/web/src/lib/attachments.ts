@@ -100,6 +100,7 @@ export type AttachmentEntityType =
   | "inspection"
   | "hse_audit"
   | "permit"
+  | "risk_assessment"
   | "training_session"
   | "toolbox_talk";
 

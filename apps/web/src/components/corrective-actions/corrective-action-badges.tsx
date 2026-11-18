@@ -18,6 +18,7 @@ const SOURCE_TONES: Record<CorrectiveActionSource, BadgeTone> = {
   HSE_OBSERVATION: "blue",
   INSPECTION: "violet",
   HSE_AUDIT: "navy",
+  RISK_ASSESSMENT: "violet",
   OTHER: "neutral",
 };
 

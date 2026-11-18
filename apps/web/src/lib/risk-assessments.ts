@@ -2,6 +2,8 @@ import {
   RISK_ASSESSMENT_STATUSES,
   type RiskAssessmentHazard,
   type RiskAssessmentStatus,
+  type RiskAssessmentSummary,
+  type RiskAssessmentTaskStep,
   type RiskLevel,
 } from "./api/types";
 
@@ -16,6 +18,7 @@ export const RISK_ASSESSMENT_PAGE_SIZE = 20;
 export const MAX_RISK_ASSESSMENT_PAGE_SIZE = 100;
 export const MAX_RISK_SEARCH_LENGTH = 200;
 export const MAX_RISK_HAZARDS = 100;
+export const MAX_RISK_TASK_STEPS = 100;
 
 export interface RiskAssessmentFilterState {
   q: string;
@@ -182,4 +185,112 @@ export function hasActiveRiskAssessmentFilters(
   filters: RiskAssessmentFilterState,
 ): boolean {
   return Boolean(filters.q || filters.status || filters.siteId || filters.ownerId);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Controlled revisions and JHA task steps                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `isCurrent` is derived exactly as the server defines it: an approved record
+ * that has not been superseded by a newer revision.
+ */
+export function isCurrentRiskAssessment(
+  assessment: Pick<RiskAssessmentSummary, "status" | "supersededBy">,
+): boolean {
+  return assessment.status === "APPROVED" && assessment.supersededBy === null;
+}
+
+export function isSupersededRiskAssessment(
+  assessment: Pick<RiskAssessmentSummary, "supersededBy">,
+): boolean {
+  return assessment.supersededBy !== null;
+}
+
+/** Review date remains the only review-due source; no due-soon thresholds. */
+export function isRiskAssessmentReviewDue(
+  reviewDate: string | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!reviewDate) {
+    return false;
+  }
+
+  const parsed = new Date(reviewDate);
+
+  return !Number.isNaN(parsed.getTime()) && parsed.getTime() <= now.getTime();
+}
+
+export function riskAssessmentRevisionLabel(revision: number): string {
+  return `Revision ${revision}`;
+}
+
+/** Generates a 24-hex id so new task steps can be referenced immediately. */
+export function createRiskTaskStepId(): string {
+  const bytes = new Uint8Array(12);
+
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
+export interface RiskAssessmentHazardGroup {
+  taskStepId: string | null;
+  title: string;
+  description: string | null;
+  hazards: RiskAssessmentHazard[];
+}
+
+/**
+ * Groups hazards by task step in step order. Hazards from legacy assessments
+ * (no steps) or with a missing step reference appear under "General hazards".
+ */
+export function groupHazardsByTaskStep(
+  hazards: readonly RiskAssessmentHazard[],
+  taskSteps: readonly RiskAssessmentTaskStep[],
+): RiskAssessmentHazardGroup[] {
+  const sortedSteps = [...taskSteps].sort(
+    (left, right) => left.sequence - right.sequence,
+  );
+  const groups: RiskAssessmentHazardGroup[] = sortedSteps.map(
+    (step, index) => ({
+      taskStepId: step.id,
+      title: `Task step ${index + 1}`,
+      description: step.description,
+      hazards: [],
+    }),
+  );
+  const byStep = new Map(
+    groups
+      .filter((group) => group.taskStepId !== null)
+      .map((group) => [group.taskStepId as string, group]),
+  );
+  const general: RiskAssessmentHazardGroup = {
+    taskStepId: null,
+    title: "General hazards",
+    description: null,
+    hazards: [],
+  };
+
+  for (const hazard of hazards) {
+    const group = hazard.taskStepId
+      ? byStep.get(hazard.taskStepId)
+      : undefined;
+
+    if (group) {
+      group.hazards.push(hazard);
+    } else {
+      general.hazards.push(hazard);
+    }
+  }
+
+  return general.hazards.length > 0 ? [...groups, general] : groups;
 }

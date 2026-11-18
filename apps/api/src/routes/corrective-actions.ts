@@ -50,6 +50,7 @@ const router: Router = Router();
 const CORRECTIVE_ACTION_POPULATE = [
   { path: "incident", select: "type title" },
   { path: "inspection", select: "title" },
+  { path: "riskAssessment", select: "title status revision" },
   { path: "project", select: "name" },
   { path: "site", select: "name code" },
   { path: "assignedTo", select: "firstName lastName" },
@@ -118,6 +119,12 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
     typeof req.query.siteId === "string" ? req.query.siteId : undefined;
   const assignedTo =
     typeof req.query.assignedTo === "string" ? req.query.assignedTo : undefined;
+  const riskAssessmentId =
+    typeof req.query.riskAssessmentId === "string"
+      ? req.query.riskAssessmentId
+      : undefined;
+  const hazardId =
+    typeof req.query.hazardId === "string" ? req.query.hazardId : undefined;
   const overdue =
     typeof req.query.overdue === "string" ? req.query.overdue : undefined;
 
@@ -133,6 +140,8 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
     ["project", projectId],
     ["site", siteId],
     ["assignee", assignedTo],
+    ["risk assessment", riskAssessmentId],
+    ["hazard", hazardId],
   ] as const) {
     if (value !== undefined && !Types.ObjectId.isValid(value)) {
       throw new HttpError(400, `Invalid ${label} id.`);
@@ -160,6 +169,14 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
   if (siteId) conditions.push({ site: new Types.ObjectId(siteId) });
   if (assignedTo) {
     conditions.push({ assignedTo: new Types.ObjectId(assignedTo) });
+  }
+  if (riskAssessmentId) {
+    conditions.push({ riskAssessment: new Types.ObjectId(riskAssessmentId) });
+  }
+  if (hazardId) {
+    conditions.push({
+      riskAssessmentHazardId: new Types.ObjectId(hazardId),
+    });
   }
 
   if (overdue === "true") {
@@ -227,6 +244,13 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     throw new HttpError(
       400,
       "Audit corrective actions must be raised from an audit finding.",
+    );
+  }
+
+  if (source === "RISK_ASSESSMENT") {
+    throw new HttpError(
+      400,
+      "Risk-assessment corrective actions must be raised from a hazard.",
     );
   }
 
@@ -396,7 +420,7 @@ router.patch(
       // their source record at creation. Allowing either to move here would let
       // provenance and site-scoped visibility diverge from that record.
       if (
-        (action.incident || action.inspection) &&
+        (action.incident || action.inspection || action.riskAssessment) &&
         (projectId !== undefined || siteId !== undefined)
       ) {
         throw new HttpError(

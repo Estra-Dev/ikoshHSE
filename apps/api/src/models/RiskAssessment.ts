@@ -2,7 +2,32 @@ import mongoose, { Schema, type InferSchemaType } from "mongoose";
 import {
   RISK_ASSESSMENT_STATUSES,
   RISK_LEVELS,
+  RISK_REVIEW_TRIGGERS,
 } from "../lib/hse-constants.js";
+
+/**
+ * One ordered task step in a job hazard analysis. Steps are embedded and
+ * referenced by hazards through `taskStepId`; legacy assessments without steps
+ * keep hazards unassigned.
+ */
+const riskTaskStepSchema = new Schema(
+  {
+    description: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    sequence: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+  },
+  {
+    timestamps: false,
+    versionKey: false,
+  },
+);
 
 /**
  * A hazard line inside a risk assessment.
@@ -68,6 +93,12 @@ const riskHazardSchema = new Schema(
       default: "",
       trim: true,
     },
+    // Links the hazard to one task step. Null keeps legacy/general hazards
+    // working without a migration.
+    taskStepId: {
+      type: Schema.Types.ObjectId,
+      default: null,
+    },
   },
   {
     timestamps: false,
@@ -125,6 +156,48 @@ const riskAssessmentSchema = new Schema(
       type: [riskHazardSchema],
       default: [],
     },
+    taskSteps: {
+      type: [riskTaskStepSchema],
+      default: [],
+    },
+    // Controlled revision metadata. A revision is a new document; prior
+    // revisions are never overwritten. `isCurrent` is derived by the API as
+    // status APPROVED with `supersededBy` null.
+    revision: {
+      type: Number,
+      default: 1,
+      min: 1,
+      required: true,
+    },
+    lineageId: {
+      type: Schema.Types.ObjectId,
+      ref: "RiskAssessment",
+      default: null,
+    },
+    supersedes: {
+      type: Schema.Types.ObjectId,
+      ref: "RiskAssessment",
+      default: null,
+    },
+    supersededBy: {
+      type: Schema.Types.ObjectId,
+      ref: "RiskAssessment",
+      default: null,
+    },
+    supersededAt: {
+      type: Date,
+      default: null,
+    },
+    reviewTrigger: {
+      type: String,
+      enum: [...RISK_REVIEW_TRIGGERS],
+      default: null,
+    },
+    reviewTriggerIncident: {
+      type: Schema.Types.ObjectId,
+      ref: "Incident",
+      default: null,
+    },
     submittedBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -172,6 +245,10 @@ riskAssessmentSchema.index({ project: 1, status: 1, updatedAt: -1 });
 riskAssessmentSchema.index({ site: 1, status: 1, updatedAt: -1 });
 // "My assessments" views for owners.
 riskAssessmentSchema.index({ owner: 1, status: 1, updatedAt: -1 });
+// Revision history for one controlled lineage.
+riskAssessmentSchema.index({ lineageId: 1, revision: -1 });
+// Reverse lookup of the revision that superseded a document.
+riskAssessmentSchema.index({ supersededBy: 1 });
 
 export type RiskAssessmentDocument = InferSchemaType<
   typeof riskAssessmentSchema

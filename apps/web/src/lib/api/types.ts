@@ -468,6 +468,7 @@ export const CORRECTIVE_ACTION_SOURCES = [
   "HSE_OBSERVATION",
   "INSPECTION",
   "HSE_AUDIT",
+  "RISK_ASSESSMENT",
   "OTHER",
 ] as const;
 
@@ -509,6 +510,13 @@ export interface CorrectiveActionProjectRef {
   name: string | null;
 }
 
+export interface CorrectiveActionRiskAssessmentRef {
+  id: string;
+  title: string | null;
+  status: string | null;
+  revision: number;
+}
+
 export interface CorrectiveActionSiteRef {
   id: string;
   name: string | null;
@@ -525,6 +533,8 @@ export interface CorrectiveActionSummary {
   audit: CorrectiveActionAuditRef | null;
   findingId: string | null;
   auditFindingId: string | null;
+  riskAssessment: CorrectiveActionRiskAssessmentRef | null;
+  riskAssessmentHazardId: string | null;
   project: CorrectiveActionProjectRef;
   site: CorrectiveActionSiteRef | null;
   assignedTo: CorrectiveActionUserRef;
@@ -934,6 +944,15 @@ export const RISK_ASSESSMENT_STATUSES = [
 
 export type RiskAssessmentStatus = (typeof RISK_ASSESSMENT_STATUSES)[number];
 
+export const RISK_REVIEW_TRIGGERS = [
+  "CHANGED_CONDITIONS",
+  "INCIDENT",
+  "REVIEW_EXPIRED",
+  "OTHER",
+] as const;
+
+export type RiskReviewTrigger = (typeof RISK_REVIEW_TRIGGERS)[number];
+
 export const RISK_LEVELS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 
 export type RiskLevel = (typeof RISK_LEVELS)[number];
@@ -968,6 +987,19 @@ export interface RiskAssessmentHazard {
   residualSeverity: number;
   residualLevel: RiskLevel;
   additionalControls: string;
+  taskStepId: string | null;
+}
+
+export interface RiskAssessmentTaskStep {
+  id: string;
+  sequence: number;
+  description: string;
+}
+
+export interface RiskReviewTriggerIncidentRef {
+  id: string;
+  type: string | null;
+  title: string | null;
 }
 
 /** Client mirror of `toRiskAssessmentSummary`. */
@@ -981,6 +1013,17 @@ export interface RiskAssessmentSummary {
   owner: RiskAssessmentUserRef | null;
   reviewDate: string | null;
   hazards: RiskAssessmentHazard[];
+  taskSteps: RiskAssessmentTaskStep[];
+  revision: number;
+  lineageId: string | null;
+  supersedes: string | null;
+  supersededBy: string | null;
+  supersededAt: string | null;
+  reviewTrigger: RiskReviewTrigger | null;
+  reviewTriggerIncident: RiskReviewTriggerIncidentRef | null;
+  isCurrent: boolean;
+  isSuperseded: boolean;
+  isReviewDue: boolean;
   submittedBy: RiskAssessmentUserRef | null;
   submittedAt: string | null;
   approvedBy: RiskAssessmentUserRef | null;
@@ -1001,6 +1044,11 @@ export interface RiskAssessmentsResponse {
 export interface RiskAssessmentResponse {
   success: boolean;
   riskAssessment: RiskAssessmentSummary;
+}
+
+export interface RiskAssessmentRevisionsResponse {
+  success: boolean;
+  riskAssessments: RiskAssessmentSummary[];
 }
 
 export interface RiskAssessmentAssignee {
@@ -1025,6 +1073,16 @@ export interface RiskAssessmentHazardInput {
   residualLikelihood: number;
   residualSeverity: number;
   additionalControls?: string;
+  taskStepId?: string | null;
+}
+
+/**
+ * Task step input. Supplying an id preserves it so hazards in the same request
+ * can reference the step; otherwise the server generates one.
+ */
+export interface RiskAssessmentTaskStepInput {
+  id?: string;
+  description: string;
 }
 
 export interface CreateRiskAssessmentInput {
@@ -1035,6 +1093,7 @@ export interface CreateRiskAssessmentInput {
   ownerId: string;
   reviewDate?: string;
   hazards: RiskAssessmentHazardInput[];
+  taskSteps?: RiskAssessmentTaskStepInput[];
 }
 
 /** `siteId: null` clears the site; omitting it leaves the current site. */
@@ -1046,10 +1105,23 @@ export interface UpdateRiskAssessmentInput {
   ownerId?: string;
   reviewDate?: string | null;
   hazards?: RiskAssessmentHazardInput[];
+  taskSteps?: RiskAssessmentTaskStepInput[];
 }
 
 export interface UpdateRiskAssessmentStatusInput {
   status: RiskAssessmentStatus;
+}
+
+export interface CreateRiskAssessmentRevisionInput {
+  reviewTrigger: RiskReviewTrigger;
+  incidentId?: string;
+  reviewDate?: string | null;
+}
+
+export interface CreateRiskTreatmentActionInput {
+  description: string;
+  assignedTo: string;
+  dueDate: string;
 }
 
 /* -------------------------------------------------------------------------- */

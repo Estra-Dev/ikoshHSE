@@ -1,6 +1,24 @@
 import { z } from "zod";
 import { objectIdSchema, trimmedNonEmptyString } from "./common.js";
-import { RISK_ASSESSMENT_STATUSES } from "../hse-constants.js";
+import {
+  RISK_ASSESSMENT_STATUSES,
+  RISK_REVIEW_TRIGGERS,
+} from "../hse-constants.js";
+
+/**
+ * One ordered task step. The `id` is optional: the server keeps an existing
+ * step id when supplied (so hazards can reference it) and generates one
+ * otherwise. Sequence is normalised from array order, so duplicates cannot be
+ * submitted.
+ */
+export const riskTaskStepSchema = z
+  .object({
+    id: objectIdSchema.optional(),
+    description: trimmedNonEmptyString(1000),
+  })
+  .strict();
+
+export type RiskTaskStepInput = z.infer<typeof riskTaskStepSchema>;
 
 /**
  * One hazard line in a risk assessment.
@@ -23,6 +41,7 @@ export const riskHazardSchema = z
     residualLikelihood: z.number().int().min(1).max(5),
     residualSeverity: z.number().int().min(1).max(5),
     additionalControls: z.string().trim().max(2000).optional(),
+    taskStepId: objectIdSchema.nullable().optional(),
   })
   .strict();
 
@@ -42,6 +61,7 @@ export const createRiskAssessmentSchema = z
     ownerId: objectIdSchema,
     reviewDate: z.coerce.date().optional(),
     hazards: z.array(riskHazardSchema).min(1).max(100),
+    taskSteps: z.array(riskTaskStepSchema).max(100).optional(),
   })
   .strict();
 
@@ -66,6 +86,7 @@ export const updateRiskAssessmentSchema = z
     ownerId: objectIdSchema.optional(),
     reviewDate: z.coerce.date().nullable().optional(),
     hazards: z.array(riskHazardSchema).min(1).max(100).optional(),
+    taskSteps: z.array(riskTaskStepSchema).max(100).optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {
@@ -85,4 +106,39 @@ export const updateRiskAssessmentStatusSchema = z
 
 export type UpdateRiskAssessmentStatusInput = z.infer<
   typeof updateRiskAssessmentStatusSchema
+>;
+
+/**
+ * Controlled revision request. A revision clones the current approved content
+ * into a new draft; the reviewer supplies the reason and, optionally, the
+ * incident that prompted it. The API verifies the incident belongs to the same
+ * project/site.
+ */
+export const createRiskAssessmentRevisionSchema = z
+  .object({
+    reviewTrigger: z.enum(RISK_REVIEW_TRIGGERS),
+    incidentId: objectIdSchema.optional(),
+    reviewDate: z.coerce.date().nullable().optional(),
+  })
+  .strict();
+
+export type CreateRiskAssessmentRevisionInput = z.infer<
+  typeof createRiskAssessmentRevisionSchema
+>;
+
+/**
+ * Treatment action raised from one hazard. Treatment actions reuse the
+ * corrective action workflow; project, site and source are derived by the API
+ * and a hazard may carry several independent actions.
+ */
+export const createRiskTreatmentActionSchema = z
+  .object({
+    description: trimmedNonEmptyString(5000),
+    assignedTo: objectIdSchema,
+    dueDate: z.coerce.date(),
+  })
+  .strict();
+
+export type CreateRiskTreatmentActionInput = z.infer<
+  typeof createRiskTreatmentActionSchema
 >;

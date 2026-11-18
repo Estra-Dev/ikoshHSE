@@ -191,6 +191,10 @@ export function correctiveActionAuditSnapshot(
     incident: idOf(action.incident),
     inspection: idOf(action.inspection),
     findingId: action.findingId ? String(action.findingId) : null,
+    riskAssessment: idOf(action.riskAssessment),
+    riskAssessmentHazardId: action.riskAssessmentHazardId
+      ? String(action.riskAssessmentHazardId)
+      : null,
     project: idOf(action.project),
     site: idOf(action.site),
     assignedTo: idOf(action.assignedTo),
@@ -288,14 +292,33 @@ export function riskAssessmentAuditSnapshot(
   assessment: WithId<RiskAssessmentDocument>,
 ): Record<string, unknown> {
   const hazards = assessment.hazards ?? [];
+  const taskSteps = assessment.taskSteps ?? [];
 
   return {
     project: idOf(assessment.project),
     site: idOf(assessment.site),
     owner: idOf(assessment.owner),
     status: assessment.status,
+    revision: assessment.revision ?? 1,
+    lineageId: idOf(assessment.lineageId),
+    supersedes: idOf(assessment.supersedes),
+    supersededBy: idOf(assessment.supersededBy),
+    supersededAt: dateOf(assessment.supersededAt),
+    reviewTrigger: assessment.reviewTrigger ?? null,
+    reviewTriggerIncident: idOf(assessment.reviewTriggerIncident),
     reviewDate: dateOf(assessment.reviewDate),
     hazardCount: hazards.length,
+    taskStepCount: taskSteps.length,
+    generalHazardCount: hazards.filter((hazard) => !hazard.taskStepId).length,
+    taskStepHazardCounts: taskSteps.map((step) => ({
+      taskStepId: String(step._id),
+      hazardCount: hazards.filter(
+        (hazard) =>
+          hazard.taskStepId !== null &&
+          hazard.taskStepId !== undefined &&
+          String(hazard.taskStepId) === String(step._id),
+      ).length,
+    })),
     highestInherentLevel: highestRiskLevel(
       hazards.map((hazard) => hazard.inherentLevel),
     ),

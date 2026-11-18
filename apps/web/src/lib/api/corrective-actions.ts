@@ -73,6 +73,30 @@ export function useCorrectiveAction(id: string) {
   });
 }
 
+/** Treatment actions raised from one risk assessment (all hazards). */
+export function useRiskAssessmentTreatmentActions(riskAssessmentId: string) {
+  const api = useApi();
+
+  return useQuery({
+    queryKey: [
+      ...correctiveActionKeys.all,
+      "risk-assessment",
+      riskAssessmentId,
+    ],
+    queryFn: () => {
+      const searchParams = new URLSearchParams();
+      searchParams.set("riskAssessmentId", riskAssessmentId);
+      searchParams.set("limit", "100");
+
+      return api.get<CorrectiveActionsResponse>(
+        "/api/corrective-actions",
+        searchParams,
+      );
+    },
+    enabled: riskAssessmentId.length > 0,
+  });
+}
+
 /** Active HSE staff that may own a corrective action. */
 export function useCorrectiveActionAssignees() {
   const api = useApi();

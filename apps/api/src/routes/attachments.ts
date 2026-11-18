@@ -33,6 +33,7 @@ import {
   canViewInspections,
   canViewAudits,
   canViewPermits,
+  canViewRiskAssessments,
   canViewTraining,
   canViewToolboxTalks,
 } from "../lib/hse-permissions.js";
@@ -67,6 +68,11 @@ import {
   permitScopeFilter,
 } from "../lib/permit-access.js";
 import {
+  canAccessRiskAssessment,
+  canUploadRiskAssessmentEvidence,
+  riskAssessmentScopeFilter,
+} from "../lib/risk-assessment-access.js";
+import {
   assertIncidentAccess,
   canAccessIncident,
   incidentEvidenceFilter,
@@ -95,6 +101,7 @@ import { HseAudit } from "../models/HseAudit.js";
 import { Incident } from "../models/Incident.js";
 import { Inspection } from "../models/Inspection.js";
 import { Permit } from "../models/Permit.js";
+import { RiskAssessment } from "../models/RiskAssessment.js";
 import { Site } from "../models/Site.js";
 import { TrainingSession } from "../models/TrainingSession.js";
 import { ToolboxTalk } from "../models/ToolboxTalk.js";
@@ -269,6 +276,35 @@ async function assertAttachmentEntityAccess(
     return;
   }
 
+  if (entityType === "risk_assessment") {
+    const assessment = await RiskAssessment.findById(entityId).session(session);
+
+    if (!assessment) {
+      throw new HttpError(404, "Specified risk assessment was not found.");
+    }
+
+    if (!canUploadRiskAssessmentEvidence(viewer, assessment)) {
+      // Distinguish an archived assessment from an unauthorized caller.
+      if (
+        assessment.status === "ARCHIVED" &&
+        canUploadRiskAssessmentEvidence(viewer, {
+          status: "APPROVED",
+          owner: assessment.owner,
+          createdBy: assessment.createdBy,
+        })
+      ) {
+        throw new HttpError(
+          409,
+          "Evidence cannot be added to an archived risk assessment.",
+        );
+      }
+
+      throw new HttpError(404, "Specified risk assessment was not found.");
+    }
+
+    return;
+  }
+
   if (entityType === "permit") {
     const permit = await Permit.findById(entityId).session(session);
 
@@ -434,6 +470,17 @@ async function buildVisibleAttachmentFilter(
       ).map((talk) => talk._id)
     : [];
 
+  const canViewRiskAssessmentRecords = canViewRiskAssessments(
+    viewer.ikoshRole,
+  );
+  const riskAssessmentIds = canViewRiskAssessmentRecords
+    ? (
+        await RiskAssessment.find(riskAssessmentScopeFilter(viewer))
+          .select("_id")
+          .lean()
+      ).map((assessment) => assessment._id)
+    : [];
+
   const filter: Record<string, unknown> = {
     $or: [
       { uploadedBy: viewer._id },
@@ -466,6 +513,10 @@ async function buildVisibleAttachmentFilter(
         entityType: "toolbox_talk",
         entityId: { $in: toolboxTalkIds },
       },
+      {
+        entityType: "risk_assessment",
+        entityId: { $in: riskAssessmentIds },
+      },
     ],
   };
 
@@ -495,6 +546,10 @@ async function buildVisibleAttachmentFilter(
 
   if (!canViewToolboxRecords) {
     hidden.push({ entityType: { $ne: "toolbox_talk" } });
+  }
+
+  if (!canViewRiskAssessmentRecords) {
+    hidden.push({ entityType: { $ne: "risk_assessment" } });
   }
 
   if (hidden.length > 0) {
@@ -782,6 +837,27 @@ router.get(
 
         if (permit) {
           allowed = canAccessPermit(viewer, permit);
+        }
+      }
+
+      if (!allowed) {
+        throw new HttpError(404, "Attachment not found.");
+      }
+    } else if (!isManagement && attachment.entityType === "risk_assessment") {
+      // Risk-assessment evidence follows the assessment, not file ownership:
+      // out-of-scope staff and ordinary employees must not read it.
+      let allowed = false;
+
+      if (
+        canViewRiskAssessments(viewer.ikoshRole) &&
+        attachment.entityId
+      ) {
+        const assessment = await RiskAssessment.findById(attachment.entityId)
+          .select("site owner createdBy")
+          .lean();
+
+        if (assessment) {
+          allowed = canAccessRiskAssessment(viewer, assessment);
         }
       }
 

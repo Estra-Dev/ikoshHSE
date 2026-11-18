@@ -7,6 +7,8 @@ export interface CorrectiveActionLike {
   audit?: unknown;
   findingId?: unknown;
   auditFindingId?: unknown;
+  riskAssessment?: unknown;
+  riskAssessmentHazardId?: unknown;
   project: unknown;
   site?: unknown;
   assignedTo: unknown;
@@ -56,6 +58,13 @@ export interface AuditRef {
   title: string | null;
 }
 
+export interface RiskAssessmentRef {
+  id: string;
+  title: string | null;
+  status: string | null;
+  revision: number;
+}
+
 export interface SerializedCorrectiveAction {
   id: string;
   description: string;
@@ -65,6 +74,8 @@ export interface SerializedCorrectiveAction {
   audit: AuditRef | null;
   findingId: string | null;
   auditFindingId: string | null;
+  riskAssessment: RiskAssessmentRef | null;
+  riskAssessmentHazardId: string | null;
   project: ProjectRef;
   site: SiteRef | null;
   assignedTo: UserRef;
@@ -89,6 +100,8 @@ interface RefDocument {
   code?: string | null;
   type?: string | null;
   title?: string | null;
+  status?: string | null;
+  revision?: number | null;
 }
 
 function asDocument(value: unknown): RefDocument | null {
@@ -134,6 +147,7 @@ export function toCorrectiveActionSummary(
   const incident = asDocument(action.incident);
   const inspection = asDocument(action.inspection);
   const audit = asDocument(action.audit);
+  const riskAssessment = asDocument(action.riskAssessment);
 
   return {
     id: String(action._id),
@@ -161,6 +175,17 @@ export function toCorrectiveActionSummary(
     findingId: action.findingId ? String(action.findingId) : null,
     auditFindingId: action.auditFindingId
       ? String(action.auditFindingId)
+      : null,
+    riskAssessment: riskAssessment
+      ? {
+          id: String(riskAssessment._id),
+          title: riskAssessment.title ?? null,
+          status: riskAssessment.status ?? null,
+          revision: riskAssessment.revision ?? 1,
+        }
+      : null,
+    riskAssessmentHazardId: action.riskAssessmentHazardId
+      ? String(action.riskAssessmentHazardId)
       : null,
     project: {
       id: project ? String(project._id) : "",

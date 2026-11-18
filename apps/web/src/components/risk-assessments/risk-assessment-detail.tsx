@@ -12,20 +12,32 @@ import {
   Spinner,
 } from "@/components/ui/feedback";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { ArrowLeftIcon } from "@/components/icons";
+import { AttachmentsPanel } from "@/components/attachments/attachments-panel";
 import { formatUtcDate, formatUtcDateTime } from "@/lib/dashboard-format";
+import { formatHseLabel } from "@/lib/hse-dashboard";
 import type { RiskAssessmentHazard } from "@/lib/api/types";
 import {
+  groupHazardsByTaskStep,
   riskAssessmentLevelSummary,
+  riskAssessmentRevisionLabel,
   riskScore,
 } from "@/lib/risk-assessments";
-import { canEditRiskAssessment } from "@/lib/permissions";
+import {
+  canCreateRiskAssessmentRevision,
+  canEditRiskAssessment,
+  canRaiseRiskTreatmentAction,
+  canUploadRiskAssessmentEvidence,
+} from "@/lib/permissions";
 import {
   RiskAssessmentStatusBadge,
   RiskLevelBadge,
 } from "./risk-assessment-badges";
 import { RiskAssessmentForm } from "./risk-assessment-form";
+import { RiskAssessmentRevisionsPanel } from "./risk-assessment-revisions-panel";
 import { RiskAssessmentStatusPanel } from "./risk-assessment-status-panel";
+import { RiskAssessmentTreatmentActions } from "./risk-assessment-treatment-actions";
 
 function personName(person: { firstName: string; lastName: string }): string {
   const name = `${person.firstName} ${person.lastName}`.trim();
@@ -184,6 +196,20 @@ export function RiskAssessmentDetail({
 
   const canEdit = canEditRiskAssessment(role, viewerId, assessment);
   const levels = riskAssessmentLevelSummary(assessment.hazards);
+  const hazardGroups = groupHazardsByTaskStep(
+    assessment.hazards,
+    assessment.taskSteps,
+  );
+  const hazardIndexes = new Map(
+    assessment.hazards.map((hazard, index) => [hazard.id, index]),
+  );
+  const canUploadEvidence = canUploadRiskAssessmentEvidence(
+    role,
+    viewerId,
+    assessment,
+  );
+  const canRaiseTreatment = canRaiseRiskTreatmentAction(role);
+  const canCreateRevision = canCreateRiskAssessmentRevision(role);
 
   return (
     <div className="space-y-6">
@@ -192,6 +218,13 @@ export function RiskAssessmentDetail({
       <header className="space-y-4 border-b border-line pb-6">
         <div className="flex flex-wrap items-center gap-2">
           <RiskAssessmentStatusBadge status={assessment.status} />
+          <Badge tone="neutral">
+            {riskAssessmentRevisionLabel(assessment.revision)}
+          </Badge>
+          {assessment.isCurrent && <Badge tone="green">Current</Badge>}
+          {assessment.isSuperseded && (
+            <Badge tone="navy">Superseded</Badge>
+          )}
           {levels.inherent && <RiskLevelBadge level={levels.inherent} />}
         </div>
 
@@ -219,6 +252,45 @@ export function RiskAssessmentDetail({
           )}
         </div>
       </header>
+
+      {assessment.isSuperseded && (
+        <div className="flex flex-col gap-2 rounded-card border border-amber-200 bg-amber-50/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-amber-900">
+              This revision has been superseded
+            </p>
+            <p className="mt-1 text-sm leading-6 text-amber-800">
+              {assessment.supersededAt
+                ? `Replaced on ${formatUtcDateTime(assessment.supersededAt)}. `
+                : ""}
+              Keep using the current approved revision for live work.
+            </p>
+          </div>
+          {assessment.supersededBy && (
+            <Link
+              href={`/risk-assessments/${assessment.supersededBy}`}
+              className="shrink-0 text-sm font-medium text-amber-900 underline-offset-2 hover:underline"
+            >
+              Open current revision
+            </Link>
+          )}
+        </div>
+      )}
+
+      {assessment.isCurrent && assessment.isReviewDue && (
+        <div className="rounded-card border border-amber-200 bg-amber-50/60 px-5 py-4">
+          <p className="text-sm font-semibold text-amber-900">
+            Review is due
+          </p>
+          <p className="mt-1 text-sm leading-6 text-amber-800">
+            This assessment reached its review date on{" "}
+            {assessment.reviewDate
+              ? formatUtcDate(assessment.reviewDate)
+              : "the scheduled date"}
+            . Create a controlled revision to record the review.
+          </p>
+        </div>
+      )}
 
       {editing && canEdit && (
         <RiskAssessmentForm
@@ -257,22 +329,71 @@ export function RiskAssessmentDetail({
                 </span>
               }
             />
-            <CardBody className="space-y-4">
-              {assessment.hazards.length === 0 ? (
+            <CardBody className="space-y-5">
+              {hazardGroups.length === 0 ? (
                 <p className="text-sm text-muted">
                   No hazards have been recorded for this assessment.
                 </p>
               ) : (
-                assessment.hazards.map((hazard, index) => (
-                  <HazardCard
-                    key={hazard.id}
-                    hazard={hazard}
-                    index={index}
-                  />
+                hazardGroups.map((group) => (
+                  <section
+                    key={group.taskStepId ?? "general"}
+                    className="space-y-3"
+                  >
+                    <div className="border-b border-line pb-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+                          {group.title}
+                        </h3>
+                        <span className="text-xs text-muted">
+                          {group.hazards.length} hazard
+                          {group.hazards.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      {group.description && (
+                        <p className="mt-1 text-sm font-medium text-ink">
+                          {group.description}
+                        </p>
+                      )}
+                    </div>
+
+                    {group.hazards.length === 0 ? (
+                      <p className="text-sm text-muted">
+                        No hazards are assigned to this task step.
+                      </p>
+                    ) : (
+                      group.hazards.map((hazard) => (
+                        <HazardCard
+                          key={hazard.id}
+                          hazard={hazard}
+                          index={hazardIndexes.get(hazard.id) ?? 0}
+                        />
+                      ))
+                    )}
+                  </section>
                 ))
               )}
             </CardBody>
           </Card>
+
+          <RiskAssessmentTreatmentActions
+            assessment={assessment}
+            canRaise={canRaiseTreatment}
+          />
+
+          <AttachmentsPanel
+            entityType="risk_assessment"
+            entityId={assessment.id}
+            title="Supporting evidence"
+            description="Photos, documents and records that support this assessment."
+            emptyMessage="No evidence has been attached to this assessment."
+            canUpload={canUploadEvidence}
+            uploadBlockedMessage={
+              assessment.status === "ARCHIVED"
+                ? "Archived assessments accept no new evidence."
+                : "Only HSE management, the owner or the creator can upload evidence."
+            }
+          />
         </div>
 
         <div className="space-y-5">
@@ -288,6 +409,22 @@ export function RiskAssessmentDetail({
                       : "Unassigned"
                   }
                 />
+                <DetailField
+                  label="Revision"
+                  value={riskAssessmentRevisionLabel(assessment.revision)}
+                />
+                {assessment.reviewTrigger && (
+                  <DetailField
+                    label="Review trigger"
+                    value={formatHseLabel(assessment.reviewTrigger)}
+                  />
+                )}
+                {assessment.supersededAt && (
+                  <DetailField
+                    label="Superseded"
+                    value={formatUtcDateTime(assessment.supersededAt)}
+                  />
+                )}
                 <DetailField
                   label="Project"
                   value={assessment.project.name ?? "—"}
@@ -368,6 +505,11 @@ export function RiskAssessmentDetail({
             assessment={assessment}
             role={role}
             viewerId={viewerId}
+          />
+
+          <RiskAssessmentRevisionsPanel
+            assessment={assessment}
+            canCreate={canCreateRevision}
           />
         </div>
       </div>

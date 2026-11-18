@@ -28,6 +28,7 @@ export const ATTACHMENT_ENTITY_TYPES = [
   "inspection",
   "hse_audit",
   "permit",
+  "risk_assessment",
   "training_session",
   "toolbox_talk",
 ] as const;

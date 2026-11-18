@@ -430,6 +430,44 @@ export function canManageRiskAssessment(role: IkoshRole | undefined): boolean {
   return canManageRiskAssessments(role);
 }
 
+/** Any authoring role may raise a revision of an accessible approved record. */
+export function canCreateRiskAssessmentRevision(
+  role: IkoshRole | undefined,
+): boolean {
+  return canCreateRiskAssessments(role);
+}
+
+/** Raising treatment actions reuses the corrective action capability. */
+export function canRaiseRiskTreatmentAction(
+  role: IkoshRole | undefined,
+): boolean {
+  return canCreateCorrectiveActions(role);
+}
+
+/**
+ * Mirrors the server rule: management, the owner or the creator may attach
+ * evidence, and archived assessments accept none.
+ */
+export function canUploadRiskAssessmentEvidence(
+  role: IkoshRole | undefined,
+  viewerId: string | undefined,
+  assessment: Pick<EditableRiskAssessment, "status" | "owner" | "createdBy">,
+): boolean {
+  if (
+    !canViewRiskAssessments(role) ||
+    assessment.status === "ARCHIVED"
+  ) {
+    return false;
+  }
+
+  return (
+    canManageRiskAssessments(role) ||
+    (viewerId !== undefined &&
+      (assessment.owner?.id === viewerId ||
+        assessment.createdBy?.id === viewerId))
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /* HSE audits                                                                 */
 /* -------------------------------------------------------------------------- */

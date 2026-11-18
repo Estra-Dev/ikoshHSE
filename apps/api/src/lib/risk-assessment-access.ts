@@ -149,3 +149,27 @@ export function canSubmitRiskAssessment(
 export function canManageRiskAssessment(viewer: RiskAssessmentViewer): boolean {
   return canManageRiskAssessments(viewer.ikoshRole);
 }
+
+/**
+ * Evidence uploads are narrower than read visibility: HSE management, the
+ * owner or the creator may attach supporting files, and archived assessments
+ * accept none. The API remains authoritative; this mirrors the rule for the
+ * web client.
+ */
+export function canUploadRiskAssessmentEvidence(
+  viewer: RiskAssessmentViewer,
+  assessment: RiskAssessmentAccessLike & { status?: string },
+): boolean {
+  if (
+    !canViewRiskAssessments(viewer.ikoshRole) ||
+    assessment.status === "ARCHIVED"
+  ) {
+    return false;
+  }
+
+  return (
+    isHseManagementRole(viewer.ikoshRole) ||
+    isOwner(viewer, assessment) ||
+    isCreator(viewer, assessment)
+  );
+}

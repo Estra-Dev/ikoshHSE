@@ -9,13 +9,17 @@ import {
   parsePagination,
 } from "../lib/validation/common.js";
 import {
+  createRiskAssessmentRevisionSchema,
   createRiskAssessmentSchema,
+  createRiskTreatmentActionSchema,
   updateRiskAssessmentSchema,
   updateRiskAssessmentStatusSchema,
   type RiskHazardInput,
+  type RiskTaskStepInput,
 } from "../lib/validation/risk-assessment.js";
 import {
   canTransitionRiskAssessmentStatus,
+  isCorrectiveActionAssignableRole,
   isRiskAssessmentStatus,
   isRiskResponsibleRole,
   riskLevelFor,
@@ -23,6 +27,7 @@ import {
   type RiskAssessmentStatus,
 } from "../lib/hse-constants.js";
 import {
+  canCreateCorrectiveActions,
   canCreateRiskAssessments,
   canEditRiskAssessments,
 } from "../lib/hse-permissions.js";
@@ -34,17 +39,26 @@ import {
   canSubmitRiskAssessment,
   riskAssessmentScopeFilter,
 } from "../lib/risk-assessment-access.js";
-import { runAuditedMutation } from "../lib/audit-log.js";
-import { riskAssessmentAuditSnapshot } from "../lib/audit-snapshots.js";
+import {
+  runAuditedMutation,
+  type AuditMutationDetails,
+} from "../lib/audit-log.js";
+import {
+  correctiveActionAuditSnapshot,
+  riskAssessmentAuditSnapshot,
+} from "../lib/audit-snapshots.js";
 import {
   attachIkoshUser,
   getIkoshUser,
 } from "../middleware/attach-ikosh-user.js";
 import { requireIkoshRole } from "../middleware/require-ikosh-role.js";
+import { CorrectiveAction } from "../models/CorrectiveAction.js";
+import { Incident } from "../models/Incident.js";
 import { Project } from "../models/Project.js";
 import { RiskAssessment } from "../models/RiskAssessment.js";
 import { Site } from "../models/Site.js";
 import { User } from "../models/User.js";
+import { toCorrectiveActionSummary } from "../serializers/corrective-action.js";
 import { toRiskAssessmentSummary } from "../serializers/risk-assessment.js";
 
 const router: Router = Router();
@@ -53,10 +67,18 @@ const RISK_POPULATE = [
   { path: "project", select: "name" },
   { path: "site", select: "name code" },
   { path: "owner", select: "firstName lastName" },
+  { path: "reviewTriggerIncident", select: "type title" },
   { path: "submittedBy", select: "firstName lastName" },
   { path: "approvedBy", select: "firstName lastName" },
   { path: "archivedBy", select: "firstName lastName" },
   { path: "createdBy", select: "firstName lastName" },
+];
+
+const TREATMENT_ACTION_POPULATE = [
+  { path: "project", select: "name" },
+  { path: "site", select: "name code" },
+  { path: "assignedTo", select: "firstName lastName" },
+  { path: "riskAssessment", select: "title status revision" },
 ];
 
 // Every risk route requires an authenticated, active IKOSH employee with at
@@ -82,6 +104,22 @@ async function assertAssignableOwner(
       400,
       "Owner must be an active supervisor, HSE officer, manager or admin.",
     );
+  }
+}
+
+/** Only active HSE staff may own a treatment action. */
+async function assertAssignableTreatmentOwner(
+  assignedTo: string,
+  session: ClientSession,
+): Promise<void> {
+  const assignee = await User.findById(assignedTo).session(session);
+
+  if (
+    !assignee ||
+    !assignee.isActive ||
+    !isCorrectiveActionAssignableRole(assignee.ikoshRole)
+  ) {
+    throw new HttpError(400, "Assignee must be an active HSE user.");
   }
 }
 
@@ -123,23 +161,75 @@ async function resolveProjectAndSite(
   return { project: project._id, site: site._id };
 }
 
+interface PersistedTaskStep {
+  _id: unknown;
+  sequence: number;
+  description: string;
+}
+
+/**
+ * Normalises submitted task steps. Client-supplied ids are preserved so
+ * hazards can reference a step within the same request; missing ids are
+ * generated. Sequence is derived from array order so it is always unique.
+ */
+function taskStepDocuments(steps: readonly RiskTaskStepInput[]) {
+  const seen = new Set<string>();
+
+  return steps.map((step, index) => {
+    const id = step.id ? new Types.ObjectId(step.id) : new Types.ObjectId();
+
+    if (seen.has(String(id))) {
+      throw new HttpError(400, "Task step ids must be unique.");
+    }
+
+    seen.add(String(id));
+
+    return {
+      _id: id,
+      sequence: index,
+      description: step.description,
+    };
+  });
+}
+
 /** Server-derived hazard rows, so stored risk bands always match the scores. */
-function hazardDocuments(hazards: readonly RiskHazardInput[]) {
-  return hazards.map((hazard) => ({
-    hazard: hazard.hazard,
-    consequences: hazard.consequences ?? "",
-    existingControls: hazard.existingControls ?? "",
-    likelihood: hazard.likelihood,
-    severity: hazard.severity,
-    inherentLevel: riskLevelFor(hazard.likelihood, hazard.severity),
-    residualLikelihood: hazard.residualLikelihood,
-    residualSeverity: hazard.residualSeverity,
-    residualLevel: riskLevelFor(
-      hazard.residualLikelihood,
-      hazard.residualSeverity,
-    ),
-    additionalControls: hazard.additionalControls ?? "",
-  }));
+function hazardDocuments(
+  hazards: readonly RiskHazardInput[],
+  taskSteps: readonly PersistedTaskStep[],
+) {
+  const stepIds = new Set(taskSteps.map((step) => String(step._id)));
+
+  return hazards.map((hazard) => {
+    let taskStepId: Types.ObjectId | null = null;
+
+    if (hazard.taskStepId) {
+      if (!stepIds.has(hazard.taskStepId)) {
+        throw new HttpError(
+          400,
+          "A hazard references a task step that is not part of this assessment.",
+        );
+      }
+
+      taskStepId = new Types.ObjectId(hazard.taskStepId);
+    }
+
+    return {
+      hazard: hazard.hazard,
+      consequences: hazard.consequences ?? "",
+      existingControls: hazard.existingControls ?? "",
+      likelihood: hazard.likelihood,
+      severity: hazard.severity,
+      inherentLevel: riskLevelFor(hazard.likelihood, hazard.severity),
+      residualLikelihood: hazard.residualLikelihood,
+      residualSeverity: hazard.residualSeverity,
+      residualLevel: riskLevelFor(
+        hazard.residualLikelihood,
+        hazard.residualSeverity,
+      ),
+      additionalControls: hazard.additionalControls ?? "",
+      taskStepId,
+    };
+  });
 }
 
 function escapeRegExp(value: string): string {
@@ -287,6 +377,8 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
 
       await assertAssignableOwner(ownerId, session);
 
+      const taskSteps = taskStepDocuments(parsed.data.taskSteps ?? []);
+
       const created = new RiskAssessment({
         title,
         description: description ?? "",
@@ -295,7 +387,8 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
         site: resolved.site,
         owner: new Types.ObjectId(ownerId),
         reviewDate: reviewDate ?? null,
-        hazards: hazardDocuments(parsed.data.hazards),
+        hazards: hazardDocuments(parsed.data.hazards, taskSteps),
+        taskSteps,
         createdBy: viewer._id,
       });
 
@@ -342,6 +435,298 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     riskAssessment: toRiskAssessmentSummary(assessment),
   });
 });
+
+// Revision history for a controlled lineage. Access follows the assessment so
+// out-of-scope users get the same 404 as the detail endpoint.
+router.get(
+  "/:id/revisions",
+  async (req: Request, res: Response): Promise<void> => {
+    const viewer = getIkoshUser(req);
+    const assessmentId = parseObjectIdParam(req.params.id, "risk assessment");
+
+    const assessment = await RiskAssessment.findById(assessmentId);
+
+    if (!assessment) {
+      throw new HttpError(404, "Risk assessment not found.");
+    }
+
+    assertRiskAssessmentAccess(viewer, assessment);
+
+    const rootId = assessment.lineageId ?? assessment._id;
+    const scope = riskAssessmentScopeFilter(viewer);
+    const conditions: Record<string, unknown>[] = [
+      { $or: [{ _id: rootId }, { lineageId: rootId }] },
+    ];
+
+    if (Object.keys(scope).length > 0) {
+      conditions.push(scope);
+    }
+
+    const revisions = await RiskAssessment.find({ $and: conditions })
+      .sort({ revision: 1, createdAt: 1 })
+      .populate(RISK_POPULATE)
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      riskAssessments: revisions.map(toRiskAssessmentSummary),
+    });
+  },
+);
+
+// Create a controlled revision of the current approved assessment. The source
+// must still be current; approval of the new revision performs the atomic
+// supersession. Content and hazard ids are cloned deliberately so treatment
+// actions on older revisions remain distinct.
+router.post(
+  "/:id/revisions",
+  async (req: Request, res: Response): Promise<void> => {
+    const viewer = getIkoshUser(req);
+    const assessmentId = parseObjectIdParam(req.params.id, "risk assessment");
+
+    if (!canCreateRiskAssessments(viewer.ikoshRole)) {
+      throw new HttpError(
+        403,
+        "You are not permitted to create risk assessment revisions.",
+      );
+    }
+
+    const parsed = createRiskAssessmentRevisionSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      throw new HttpError(400, firstValidationIssue(parsed.error));
+    }
+
+    const { reviewTrigger, incidentId, reviewDate } = parsed.data;
+
+    const revision = await runAuditedMutation(
+      viewer._id,
+      async (session) => {
+        const source = await RiskAssessment.findById(assessmentId).session(
+          session,
+        );
+
+        if (!source) {
+          throw new HttpError(404, "Risk assessment not found.");
+        }
+
+        assertRiskAssessmentAccess(viewer, source);
+
+        if (source.status !== "APPROVED" || source.supersededBy) {
+          throw new HttpError(
+            409,
+            "Only the current approved risk assessment can be revised.",
+          );
+        }
+
+        let triggerIncident: Types.ObjectId | null = null;
+
+        if (incidentId) {
+          const incident = await Incident.findById(incidentId).session(session);
+
+          if (!incident) {
+            throw new HttpError(404, "Specified incident was not found.");
+          }
+
+          const incidentSite = await Site.findById(incident.site).session(
+            session,
+          );
+
+          if (!incidentSite) {
+            throw new HttpError(
+              409,
+              "The linked incident site no longer exists.",
+            );
+          }
+
+          if (
+            String(incidentSite.project) !== String(source.project) ||
+            (source.site !== null &&
+              source.site !== undefined &&
+              String(incidentSite._id) !== String(source.site))
+          ) {
+            throw new HttpError(
+              409,
+              "The linked incident does not match the assessment project and site.",
+            );
+          }
+
+          triggerIncident = incident._id;
+        }
+
+        const stepIdMap = new Map<string, Types.ObjectId>();
+        const taskSteps = (source.taskSteps ?? []).map((step, index) => {
+          const id = new Types.ObjectId();
+          stepIdMap.set(String(step._id), id);
+
+          return {
+            _id: id,
+            sequence: index,
+            description: step.description,
+          };
+        });
+
+        const hazards = (source.hazards ?? []).map((hazard) => ({
+          hazard: hazard.hazard,
+          consequences: hazard.consequences ?? "",
+          existingControls: hazard.existingControls ?? "",
+          likelihood: hazard.likelihood,
+          severity: hazard.severity,
+          inherentLevel: hazard.inherentLevel,
+          residualLikelihood: hazard.residualLikelihood,
+          residualSeverity: hazard.residualSeverity,
+          residualLevel: hazard.residualLevel,
+          additionalControls: hazard.additionalControls ?? "",
+          taskStepId: hazard.taskStepId
+            ? (stepIdMap.get(String(hazard.taskStepId)) ?? null)
+            : null,
+        }));
+
+        const created = new RiskAssessment({
+          title: source.title,
+          description: source.description ?? "",
+          status: "DRAFT",
+          project: source.project,
+          site: source.site ?? null,
+          owner: source.owner,
+          reviewDate:
+            reviewDate !== undefined ? reviewDate : (source.reviewDate ?? null),
+          hazards,
+          taskSteps,
+          revision: (source.revision ?? 1) + 1,
+          lineageId: source.lineageId ?? source._id,
+          supersedes: source._id,
+          reviewTrigger,
+          reviewTriggerIncident: triggerIncident,
+          createdBy: viewer._id,
+        });
+
+        await created.save({ session });
+
+        return {
+          result: created,
+          audit: {
+            action: "risk_assessment.revision_created",
+            entityType: "RiskAssessment",
+            entityId: created._id,
+            after: riskAssessmentAuditSnapshot(created),
+          },
+        };
+      },
+    );
+
+    await revision.populate(RISK_POPULATE);
+
+    res.status(201).json({
+      success: true,
+      riskAssessment: toRiskAssessmentSummary(revision),
+    });
+  },
+);
+
+// Raise a treatment action from one hazard. Multiple independent actions are
+// allowed per hazard and reuse the corrective action workflow.
+router.post(
+  "/:id/hazards/:hazardId/treatment-action",
+  async (req: Request, res: Response): Promise<void> => {
+    const viewer = getIkoshUser(req);
+    const assessmentId = parseObjectIdParam(req.params.id, "risk assessment");
+    const hazardId = parseObjectIdParam(req.params.hazardId, "hazard");
+
+    if (!canCreateCorrectiveActions(viewer.ikoshRole)) {
+      throw new HttpError(
+        403,
+        "You are not permitted to create corrective actions.",
+      );
+    }
+
+    const parsed = createRiskTreatmentActionSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      throw new HttpError(400, firstValidationIssue(parsed.error));
+    }
+
+    const { description, assignedTo, dueDate } = parsed.data;
+
+    const action = await runAuditedMutation(
+      viewer._id,
+      async (session) => {
+        const assessment = await RiskAssessment.findById(assessmentId).session(
+          session,
+        );
+
+        if (!assessment) {
+          throw new HttpError(404, "Risk assessment not found.");
+        }
+
+        assertRiskAssessmentAccess(viewer, assessment);
+
+        if (assessment.status === "ARCHIVED") {
+          throw new HttpError(
+            409,
+            "Treatment actions cannot be raised against an archived risk assessment.",
+          );
+        }
+
+        const hazard = (assessment.hazards ?? []).find(
+          (item) => String(item._id) === hazardId,
+        );
+
+        if (!hazard) {
+          throw new HttpError(
+            404,
+            "Hazard not found in this risk assessment.",
+          );
+        }
+
+        await assertAssignableTreatmentOwner(assignedTo, session);
+
+        const created = new CorrectiveAction({
+          description,
+          source: "RISK_ASSESSMENT",
+          riskAssessment: assessment._id,
+          riskAssessmentHazardId: hazard._id,
+          project: assessment.project,
+          site: assessment.site ?? null,
+          assignedTo: new Types.ObjectId(assignedTo),
+          dueDate,
+          status: "OPEN",
+          createdBy: viewer._id,
+        });
+
+        await created.save({ session });
+
+        return {
+          result: created,
+          audit: {
+            action: "corrective_action.created",
+            entityType: "CorrectiveAction",
+            entityId: created._id,
+            after: correctiveActionAuditSnapshot(created),
+          },
+          additionalAudits: [
+            {
+              action: "risk_assessment.treatment_action_raised",
+              entityType: "RiskAssessment",
+              entityId: assessment._id,
+              after: {
+                hazardId: String(hazard._id),
+                correctiveActionId: String(created._id),
+              },
+            },
+          ],
+        };
+      },
+    );
+
+    await action.populate(TREATMENT_ACTION_POPULATE);
+
+    res.status(201).json({
+      success: true,
+      correctiveAction: toCorrectiveActionSummary(action),
+    });
+  },
+);
 
 // Edit DRAFT metadata or replace the hazard list. Approved and archived
 // assessments are immutable except for archiving.
@@ -394,6 +779,7 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
       ownerId,
       reviewDate,
       hazards,
+      taskSteps,
     } = parsed.data;
 
     let nextProject = assessment.project;
@@ -448,8 +834,40 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
     if (title !== undefined) assessment.title = title;
     if (description !== undefined) assessment.description = description;
     if (reviewDate !== undefined) assessment.reviewDate = reviewDate;
+
+    const nextTaskSteps =
+      taskSteps !== undefined
+        ? taskStepDocuments(taskSteps)
+        : (assessment.taskSteps ?? []);
+
+    if (taskSteps !== undefined && hazards === undefined) {
+      const nextStepIds = new Set(
+        nextTaskSteps.map((step) => String(step._id)),
+      );
+      const referenced = (assessment.hazards ?? []).some(
+        (hazard) =>
+          hazard.taskStepId &&
+          !nextStepIds.has(String(hazard.taskStepId)),
+      );
+
+      if (referenced) {
+        throw new HttpError(
+          409,
+          "A task step cannot be removed while a hazard still references it.",
+        );
+      }
+    }
+
     if (hazards !== undefined) {
-      assessment.hazards = hazardDocuments(hazards) as typeof assessment.hazards;
+      assessment.hazards = hazardDocuments(
+        hazards,
+        nextTaskSteps,
+      ) as typeof assessment.hazards;
+    }
+
+    if (taskSteps !== undefined) {
+      assessment.taskSteps =
+        nextTaskSteps as typeof assessment.taskSteps;
     }
 
     assessment.project = nextProject;
@@ -534,6 +952,7 @@ router.patch(
         }
 
         const before = riskAssessmentAuditSnapshot(assessment);
+        let supersessionAudit: AuditMutationDetails | null = null;
 
         assessment.status = nextStatus;
 
@@ -545,6 +964,47 @@ router.patch(
         if (nextStatus === "APPROVED") {
           assessment.approvedBy = viewer._id;
           assessment.approvedAt = new Date();
+
+          // Atomic supersession: only one revision may retire the source. The
+          // conditional update also rejects a stale revision whose source has
+          // already been superseded by a competing approval.
+          if (assessment.supersedes) {
+            const previous = await RiskAssessment.findOneAndUpdate(
+              {
+                _id: assessment.supersedes,
+                status: "APPROVED",
+                supersededBy: null,
+              },
+              {
+                $set: {
+                  supersededBy: assessment._id,
+                  supersededAt: new Date(),
+                },
+              },
+              { session, returnDocument: "before" },
+            );
+
+            if (!previous) {
+              throw new HttpError(
+                409,
+                "This revision can no longer be approved because its source assessment is no longer the current approved revision.",
+              );
+            }
+
+            const superseded = await RiskAssessment.findById(
+              assessment.supersedes,
+            ).session(session);
+
+            supersessionAudit = {
+              action: "risk_assessment.superseded",
+              entityType: "RiskAssessment",
+              entityId: previous._id,
+              before: riskAssessmentAuditSnapshot(previous),
+              after: superseded
+                ? riskAssessmentAuditSnapshot(superseded)
+                : null,
+            };
+          }
         }
 
         if (nextStatus === "DRAFT") {
@@ -572,6 +1032,9 @@ router.patch(
             before,
             after: riskAssessmentAuditSnapshot(assessment),
           },
+          ...(supersessionAudit
+            ? { additionalAudits: [supersessionAudit] }
+            : {}),
         };
       },
     );

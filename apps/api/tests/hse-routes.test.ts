@@ -8,6 +8,9 @@ import {
   INJURED_BODY_PARTS,
   PERMIT_TO_WORK_TYPES,
   PROJECT_STATUSES,
+  RISK_ASSESSMENT_STATUSES,
+  RISK_LEVELS,
+  RISK_REVIEW_TRIGGERS,
   SITE_STATUSES,
   WASTE_TYPES,
 } from "../src/lib/hse-constants.js";
@@ -73,6 +76,13 @@ describe("HSE route registration", () => {
     expect(response.body.data.wasteTypes).toEqual([...WASTE_TYPES]);
     expect(response.body.data.projectStatuses).toEqual([...PROJECT_STATUSES]);
     expect(response.body.data.siteStatuses).toEqual([...SITE_STATUSES]);
+    expect(response.body.data.riskAssessmentStatuses).toEqual([
+      ...RISK_ASSESSMENT_STATUSES,
+    ]);
+    expect(response.body.data.riskLevels).toEqual([...RISK_LEVELS]);
+    expect(response.body.data.riskReviewTriggers).toEqual([
+      ...RISK_REVIEW_TRIGGERS,
+    ]);
   });
 
   it("no longer exposes the legacy /api/hse/hse-reference path", async () => {

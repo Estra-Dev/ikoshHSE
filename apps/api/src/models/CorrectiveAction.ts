@@ -53,6 +53,17 @@ const correctiveActionSchema = new Schema(
       type: Schema.Types.ObjectId,
       default: null,
     },
+    // Treatment action provenance. A hazard may carry several independent
+    // actions, so there is deliberately no uniqueness constraint here.
+    riskAssessment: {
+      type: Schema.Types.ObjectId,
+      ref: "RiskAssessment",
+      default: null,
+    },
+    riskAssessmentHazardId: {
+      type: Schema.Types.ObjectId,
+      default: null,
+    },
     project: {
       type: Schema.Types.ObjectId,
       ref: "Project",
@@ -135,6 +146,11 @@ correctiveActionSchema.index({ incident: 1 });
 correctiveActionSchema.index({ inspection: 1 });
 // Reverse lookup of actions raised from an audit finding.
 correctiveActionSchema.index({ audit: 1 });
+// Treatment actions for a risk-assessment hazard.
+correctiveActionSchema.index({
+  riskAssessment: 1,
+  riskAssessmentHazardId: 1,
+});
 
 export type CorrectiveActionDocument = InferSchemaType<
   typeof correctiveActionSchema

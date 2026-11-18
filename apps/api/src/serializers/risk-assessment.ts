@@ -10,6 +10,13 @@ export interface RiskHazardLike {
   residualSeverity: number;
   residualLevel: string;
   additionalControls?: string | null;
+  taskStepId?: unknown;
+}
+
+export interface RiskTaskStepLike {
+  _id?: unknown;
+  sequence: number;
+  description: string;
 }
 
 export interface RiskAssessmentLike {
@@ -22,6 +29,14 @@ export interface RiskAssessmentLike {
   owner: unknown;
   reviewDate?: Date | null;
   hazards?: readonly RiskHazardLike[];
+  taskSteps?: readonly RiskTaskStepLike[];
+  revision?: number | null;
+  lineageId?: unknown;
+  supersedes?: unknown;
+  supersededBy?: unknown;
+  supersededAt?: Date | null;
+  reviewTrigger?: string | null;
+  reviewTriggerIncident?: unknown;
   submittedBy?: unknown;
   submittedAt?: Date | null;
   approvedBy?: unknown;
@@ -62,6 +77,19 @@ export interface SerializedRiskHazard {
   residualSeverity: number;
   residualLevel: string;
   additionalControls: string;
+  taskStepId: string | null;
+}
+
+export interface SerializedRiskTaskStep {
+  id: string;
+  sequence: number;
+  description: string;
+}
+
+export interface IncidentRef {
+  id: string;
+  type: string | null;
+  title: string | null;
 }
 
 export interface SerializedRiskAssessment {
@@ -74,6 +102,17 @@ export interface SerializedRiskAssessment {
   owner: UserRef | null;
   reviewDate: string | null;
   hazards: SerializedRiskHazard[];
+  taskSteps: SerializedRiskTaskStep[];
+  revision: number;
+  lineageId: string | null;
+  supersedes: string | null;
+  supersededBy: string | null;
+  supersededAt: string | null;
+  reviewTrigger: string | null;
+  reviewTriggerIncident: IncidentRef | null;
+  isCurrent: boolean;
+  isSuperseded: boolean;
+  isReviewDue: boolean;
   submittedBy: UserRef | null;
   submittedAt: string | null;
   approvedBy: UserRef | null;
@@ -91,6 +130,8 @@ interface RefDocument {
   lastName?: string | null;
   name?: string | null;
   code?: string | null;
+  type?: string | null;
+  title?: string | null;
 }
 
 function asDocument(value: unknown): RefDocument | null {
@@ -139,7 +180,28 @@ function hazardRef(
     residualSeverity: hazard.residualSeverity,
     residualLevel: hazard.residualLevel,
     additionalControls: hazard.additionalControls ?? "",
+    taskStepId: hazard.taskStepId ? String(hazard.taskStepId) : null,
   };
+}
+
+function stepRef(
+  step: RiskTaskStepLike,
+  index: number,
+): SerializedRiskTaskStep {
+  return {
+    id: step._id ? String(step._id) : `task-step-${index}`,
+    sequence: step.sequence,
+    description: step.description,
+  };
+}
+
+function referenceId(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const document = asDocument(value);
+  return document ? String(document._id) : null;
 }
 
 /**
@@ -152,6 +214,12 @@ export function toRiskAssessmentSummary(
 ): SerializedRiskAssessment {
   const project = asDocument(assessment.project);
   const site = asDocument(assessment.site);
+  const incident = asDocument(assessment.reviewTriggerIncident);
+  const taskSteps = [...(assessment.taskSteps ?? [])].sort(
+    (left, right) => left.sequence - right.sequence,
+  );
+  const supersededBy = referenceId(assessment.supersededBy);
+  const reviewDate = assessment.reviewDate ?? null;
 
   return {
     id: String(assessment._id),
@@ -170,8 +238,27 @@ export function toRiskAssessmentSummary(
         }
       : null,
     owner: userRef(assessment.owner),
-    reviewDate: dateOf(assessment.reviewDate),
+    reviewDate: dateOf(reviewDate),
     hazards: (assessment.hazards ?? []).map(hazardRef),
+    taskSteps: taskSteps.map(stepRef),
+    revision: assessment.revision ?? 1,
+    lineageId: referenceId(assessment.lineageId),
+    supersedes: referenceId(assessment.supersedes),
+    supersededBy,
+    supersededAt: dateOf(assessment.supersededAt),
+    reviewTrigger: assessment.reviewTrigger ?? null,
+    reviewTriggerIncident: incident
+      ? {
+          id: String(incident._id),
+          type: incident.type ?? null,
+          title: incident.title ?? null,
+        }
+      : null,
+    isCurrent:
+      assessment.status === "APPROVED" && supersededBy === null,
+    isSuperseded: supersededBy !== null,
+    isReviewDue:
+      reviewDate instanceof Date && reviewDate.getTime() <= Date.now(),
     submittedBy: userRef(assessment.submittedBy),
     submittedAt: dateOf(assessment.submittedAt),
     approvedBy: userRef(assessment.approvedBy),

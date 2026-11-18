@@ -16,6 +16,7 @@ import {
   PROJECT_STATUSES,
   RISK_ASSESSMENT_STATUSES,
   RISK_LEVELS,
+  RISK_REVIEW_TRIGGERS,
   SITE_STATUSES,
   WASTE_TYPES,
 } from "../lib/hse-constants.js";
@@ -75,6 +76,7 @@ router.get(
         siteStatuses: [...SITE_STATUSES],
         riskAssessmentStatuses: [...RISK_ASSESSMENT_STATUSES],
         riskLevels: [...RISK_LEVELS],
+        riskReviewTriggers: [...RISK_REVIEW_TRIGGERS],
         auditTypes: [...AUDIT_TYPES],
         auditStatuses: [...AUDIT_STATUSES],
         auditChecklistResults: [...AUDIT_CHECKLIST_RESULTS],

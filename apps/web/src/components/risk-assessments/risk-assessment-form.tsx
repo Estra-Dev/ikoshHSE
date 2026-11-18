@@ -17,10 +17,13 @@ import type {
   CreateRiskAssessmentInput,
   RiskAssessmentHazardInput,
   RiskAssessmentSummary,
+  RiskAssessmentTaskStepInput,
   UpdateRiskAssessmentInput,
 } from "@/lib/api/types";
 import {
   MAX_RISK_HAZARDS,
+  MAX_RISK_TASK_STEPS,
+  createRiskTaskStepId,
   riskAssessmentDetailHref,
   riskLevelFor,
   riskScore,
@@ -29,6 +32,7 @@ import { RiskLevelBadge } from "./risk-assessment-badges";
 
 interface HazardRow {
   key: string;
+  taskStepKey: string;
   hazard: string;
   consequences: string;
   existingControls: string;
@@ -39,6 +43,12 @@ interface HazardRow {
   additionalControls: string;
 }
 
+interface TaskStepRow {
+  key: string;
+  id: string;
+  description: string;
+}
+
 let hazardKeySequence = 0;
 
 function blankHazardRow(): HazardRow {
@@ -46,6 +56,7 @@ function blankHazardRow(): HazardRow {
 
   return {
     key: `hazard-${hazardKeySequence}`,
+    taskStepKey: "",
     hazard: "",
     consequences: "",
     existingControls: "",
@@ -57,6 +68,24 @@ function blankHazardRow(): HazardRow {
   };
 }
 
+function taskStepRowsFromAssessment(
+  assessment: RiskAssessmentSummary,
+): TaskStepRow[] {
+  return [...assessment.taskSteps]
+    .sort((left, right) => left.sequence - right.sequence)
+    .map((step) => ({
+      key: step.id,
+      id: step.id,
+      description: step.description,
+    }));
+}
+
+function blankTaskStepRow(): TaskStepRow {
+  const id = createRiskTaskStepId();
+
+  return { key: id, id, description: "" };
+}
+
 function hazardRowsFromAssessment(
   assessment: RiskAssessmentSummary,
 ): HazardRow[] {
@@ -66,6 +95,7 @@ function hazardRowsFromAssessment(
 
   return assessment.hazards.map((hazard) => ({
     key: hazard.id,
+    taskStepKey: hazard.taskStepId ?? "",
     hazard: hazard.hazard,
     consequences: hazard.consequences,
     existingControls: hazard.existingControls,
@@ -123,6 +153,9 @@ export function RiskAssessmentForm({
   const [hazards, setHazards] = useState<HazardRow[]>(() =>
     assessment ? hazardRowsFromAssessment(assessment) : [blankHazardRow()],
   );
+  const [taskSteps, setTaskSteps] = useState<TaskStepRow[]>(() =>
+    assessment ? taskStepRowsFromAssessment(assessment) : [],
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState("");
 
@@ -134,6 +167,12 @@ export function RiskAssessmentForm({
   function updateHazard(key: string, partial: Partial<HazardRow>): void {
     setHazards((current) =>
       current.map((row) => (row.key === key ? { ...row, ...partial } : row)),
+    );
+  }
+
+  function updateTaskStep(key: string, description: string): void {
+    setTaskSteps((current) =>
+      current.map((row) => (row.key === key ? { ...row, description } : row)),
     );
   }
 
@@ -164,6 +203,30 @@ export function RiskAssessmentForm({
 
     if (hazards.length > MAX_RISK_HAZARDS) {
       nextErrors.hazards = `Keep the assessment to ${MAX_RISK_HAZARDS} hazards or fewer.`;
+    }
+
+    if (taskSteps.length > MAX_RISK_TASK_STEPS) {
+      nextErrors.taskSteps =
+        `Keep the assessment to ${MAX_RISK_TASK_STEPS} task steps or fewer.`;
+    }
+
+    for (const step of taskSteps) {
+      if (!step.description.trim()) {
+        nextErrors[`${step.key}.description`] =
+          "Describe this task step.";
+      } else if (step.description.trim().length > 1000) {
+        nextErrors[`${step.key}.description`] =
+          "Keep each task step under 1,000 characters.";
+      }
+    }
+
+    const stepKeys = new Set(taskSteps.map((step) => step.id));
+
+    for (const row of hazards) {
+      if (row.taskStepKey && !stepKeys.has(row.taskStepKey)) {
+        nextErrors[`${row.key}.taskStepId`] =
+          "Choose a task step defined in this assessment.";
+      }
     }
 
     for (const row of hazards) {
@@ -205,7 +268,15 @@ export function RiskAssessmentForm({
       ...(row.additionalControls.trim()
         ? { additionalControls: row.additionalControls.trim() }
         : {}),
+      taskStepId: row.taskStepKey || null,
     };
+  }
+
+  function toTaskStepInputs(): RiskAssessmentTaskStepInput[] {
+    return taskSteps.map((step) => ({
+      id: step.id,
+      description: step.description.trim(),
+    }));
   }
 
   async function handleSubmit(
@@ -222,6 +293,7 @@ export function RiskAssessmentForm({
     }
 
     const hazardInputs = hazards.map(toHazardInput);
+    const taskStepInputs = toTaskStepInputs();
 
     try {
       if (mode === "create") {
@@ -230,6 +302,7 @@ export function RiskAssessmentForm({
           projectId,
           ownerId,
           hazards: hazardInputs,
+          taskSteps: taskStepInputs,
         };
 
         if (siteId) input.siteId = siteId;
@@ -255,6 +328,7 @@ export function RiskAssessmentForm({
         ownerId,
         reviewDate: reviewDate ? new Date(reviewDate).toISOString() : null,
         hazards: hazardInputs,
+        taskSteps: taskStepInputs,
       };
 
       await updateAssessment.mutateAsync({ id: assessment.id, input });
@@ -392,6 +466,101 @@ export function RiskAssessmentForm({
 
       <Card>
         <CardHeader
+          title="Task steps"
+          description="Optional. Break the work into ordered steps, then assign each hazard. Unassigned hazards appear as general hazards."
+          action={<Badge tone="neutral">{taskSteps.length}</Badge>}
+        />
+        <CardBody className="space-y-4">
+          {errors.taskSteps && (
+            <p role="alert" className="text-sm text-red-700">
+              {errors.taskSteps}
+            </p>
+          )}
+
+          {taskSteps.length === 0 && (
+            <p className="text-sm text-muted">
+              No task steps recorded. Hazards will be grouped as general
+              hazards.
+            </p>
+          )}
+
+          {taskSteps.map((step, index) => {
+            const referenced = hazards.some(
+              (row) => row.taskStepKey === step.id,
+            );
+
+            return (
+              <div
+                key={step.key}
+                className="space-y-3 rounded-lg border border-line bg-navy-50/20 p-4"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+                    Task step {index + 1}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setTaskSteps((current) =>
+                        current.filter((row) => row.key !== step.key),
+                      )
+                    }
+                    disabled={referenced}
+                    title={
+                      referenced
+                        ? "Reassign the hazards using this step before removing it."
+                        : undefined
+                    }
+                  >
+                    Remove
+                  </Button>
+                </div>
+
+                <TextField
+                  label="Description"
+                  id={`risk-task-step-${step.key}`}
+                  value={step.description}
+                  error={errors[`${step.key}.description`]}
+                  onChange={(event) => {
+                    updateTaskStep(step.key, event.target.value);
+                    setErrors((current) => ({
+                      ...current,
+                      [`${step.key}.description`]: "",
+                    }));
+                  }}
+                  maxLength={1000}
+                  placeholder="e.g. Erect scaffold to the second lift"
+                />
+              </div>
+            );
+          })}
+
+          <div className="flex items-center justify-between gap-3 border-t border-line pt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() =>
+                setTaskSteps((current) =>
+                  current.length >= MAX_RISK_TASK_STEPS
+                    ? current
+                    : [...current, blankTaskStepRow()],
+                )
+              }
+              disabled={taskSteps.length >= MAX_RISK_TASK_STEPS}
+            >
+              Add task step
+            </Button>
+            <Badge tone="neutral">
+              {taskSteps.length} step{taskSteps.length === 1 ? "" : "s"}
+            </Badge>
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader
           title="Hazards"
           description="Rate likelihood and severity from 1 to 5. Risk bands are derived by the server from those scores."
         />
@@ -432,6 +601,40 @@ export function RiskAssessmentForm({
                     Remove
                   </Button>
                 </div>
+
+                {taskSteps.length > 0 && (
+                  <SelectField
+                    label="Task step"
+                    id={`risk-hazard-task-${row.key}`}
+                    value={row.taskStepKey}
+                    error={errors[`${row.key}.taskStepId`]}
+                    onChange={(event) => {
+                      updateHazard(row.key, {
+                        taskStepKey: event.target.value,
+                      });
+                      setErrors((current) => ({
+                        ...current,
+                        [`${row.key}.taskStepId`]: "",
+                      }));
+                    }}
+                    options={[
+                      {
+                        value: "",
+                        label: "General hazard (no task step)",
+                      },
+                      ...taskSteps.map((step, stepIndex) => {
+                        const description = step.description.trim();
+
+                        return {
+                          value: step.id,
+                          label: description
+                            ? `Task step ${stepIndex + 1}: ${description.slice(0, 80)}`
+                            : `Task step ${stepIndex + 1}`,
+                        };
+                      }),
+                    ]}
+                  />
+                )}
 
                 <TextField
                   label="Hazard"

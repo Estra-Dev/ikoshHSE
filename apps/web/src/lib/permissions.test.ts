@@ -21,11 +21,14 @@ import {
   canUploadInspectionEvidence,
   canViewInspections,
   canCreateRiskAssessments,
+  canCreateRiskAssessmentRevision,
   canEditRiskAssessment,
   canEditRiskAssessments,
   canManageRiskAssessment,
   canManageRiskAssessments,
+  canRaiseRiskTreatmentAction,
   canSubmitRiskAssessment,
+  canUploadRiskAssessmentEvidence,
   canViewRiskAssessments,
   canConductAudit,
   canConductAudits,
@@ -546,6 +549,48 @@ describe("risk assessment permissions", () => {
         }),
       ).toBe(false);
     }
+  });
+
+  it("mirrors revision and treatment-action capabilities", () => {
+    for (const role of ALL_ROLES) {
+      const canAuthor =
+        role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN";
+
+      expect(canCreateRiskAssessmentRevision(role)).toBe(canAuthor);
+      expect(canRaiseRiskTreatmentAction(role)).toBe(canAuthor);
+    }
+
+    expect(canCreateRiskAssessmentRevision(undefined)).toBe(false);
+    expect(canRaiseRiskTreatmentAction(undefined)).toBe(false);
+  });
+
+  it("restricts evidence uploads to management, the owner or the creator", () => {
+    const approved = { ...draft, status: "APPROVED" as const };
+
+    expect(
+      canUploadRiskAssessmentEvidence("HSE_MANAGER", otherId, approved),
+    ).toBe(true);
+    expect(
+      canUploadRiskAssessmentEvidence("HSE_OFFICER", ownerId, approved),
+    ).toBe(true);
+    expect(
+      canUploadRiskAssessmentEvidence("HSE_OFFICER", creatorId, approved),
+    ).toBe(true);
+    expect(
+      canUploadRiskAssessmentEvidence("HSE_OFFICER", otherId, approved),
+    ).toBe(false);
+    expect(
+      canUploadRiskAssessmentEvidence("SUPERVISOR", ownerId, approved),
+    ).toBe(true);
+    expect(
+      canUploadRiskAssessmentEvidence("SUPERVISOR", otherId, approved),
+    ).toBe(false);
+    expect(
+      canUploadRiskAssessmentEvidence("HSE_MANAGER", ownerId, {
+        ...approved,
+        status: "ARCHIVED",
+      }),
+    ).toBe(false);
   });
 });
 

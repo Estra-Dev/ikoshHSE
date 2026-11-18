@@ -148,6 +148,83 @@ describe("risk assessments API", () => {
     expect(JSON.stringify(audit?.after)).not.toContain("Harness anchor points");
   });
 
+  it("records ordered JHA task steps and links hazards to them", async () => {
+    const { project, site } = await createSite();
+    const officer = await signInAsIkoshUser({
+      ikoshRole: "HSE_OFFICER",
+      assignedSites: [site._id],
+    });
+    const firstStepId = "64b000000000000000000001";
+
+    const created = await createAssessment(officer.authorization, {
+      ...assessmentBody(project._id, officer.user._id),
+      siteId: String(site._id),
+      taskSteps: [
+        { id: firstStepId, description: "Erect scaffold to the second lift" },
+        { description: "Inspect the completed scaffold" },
+      ],
+      hazards: [
+        hazard({ taskStepId: firstStepId }),
+        hazard({
+          hazard: "Dropped tools",
+          consequences: "Tool strikes a worker below",
+          taskStepId: null,
+        }),
+      ],
+    });
+
+    expect(created.status).toBe(201);
+    expect(created.body.riskAssessment.taskSteps).toHaveLength(2);
+    expect(created.body.riskAssessment.taskSteps[0]).toMatchObject({
+      id: firstStepId,
+      sequence: 0,
+      description: "Erect scaffold to the second lift",
+    });
+    expect(created.body.riskAssessment.taskSteps[1].sequence).toBe(1);
+    expect(created.body.riskAssessment.taskSteps[1].id).toMatch(
+      /^[0-9a-f]{24}$/,
+    );
+    expect(created.body.riskAssessment.hazards[0].taskStepId).toBe(
+      firstStepId,
+    );
+    expect(created.body.riskAssessment.hazards[1].taskStepId).toBeNull();
+
+    const audit = await AuditLog.findOne({
+      entityType: "RiskAssessment",
+      action: "risk_assessment.created",
+    }).lean();
+
+    expect(audit?.after).toMatchObject({
+      taskStepCount: 2,
+      generalHazardCount: 1,
+    });
+    expect(JSON.stringify(audit?.after)).not.toContain("Erect scaffold");
+
+    const unknownStep = await createAssessment(officer.authorization, {
+      ...assessmentBody(project._id, officer.user._id),
+      siteId: String(site._id),
+      taskSteps: [{ description: "Only step" }],
+      hazards: [
+        hazard({ taskStepId: "64b000000000000000000099" }),
+      ],
+    });
+
+    expect(unknownStep.status).toBe(400);
+
+    const assessmentId = created.body.riskAssessment.id;
+    const secondStepId = created.body.riskAssessment.taskSteps[1].id;
+    const removal = await request(app)
+      .patch(`/api/risk-assessments/${assessmentId}`)
+      .set("Authorization", officer.authorization)
+      .send({
+        taskSteps: [
+          { id: secondStepId, description: "Inspect the completed scaffold" },
+        ],
+      });
+
+    expect(removal.status).toBe(409);
+  });
+
   it("rejects forged risk levels and out-of-range scores", async () => {
     const { project, site } = await createSite();
     const officer = await signInAsIkoshUser({

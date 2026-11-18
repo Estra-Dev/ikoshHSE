@@ -1,22 +1,52 @@
 import { describe, expect, it } from "vitest";
 import {
   buildRiskAssessmentFilterSearchParams,
+  createRiskTaskStepId,
   EMPTY_RISK_ASSESSMENT_FILTERS,
+  groupHazardsByTaskStep,
   hasActiveRiskAssessmentFilters,
   highestRiskLevel,
+  isCurrentRiskAssessment,
+  isRiskAssessmentReviewDue,
   isRiskAssessmentTerminal,
+  isSupersededRiskAssessment,
   nextRiskAssessmentStatuses,
   parseRiskAssessmentFilters,
   RISK_ASSESSMENT_PAGE_SIZE,
   riskAssessmentDetailHref,
   riskAssessmentLevelSummary,
+  riskAssessmentRevisionLabel,
   riskLevelFor,
   riskScore,
   type RiskAssessmentFilterState,
 } from "./risk-assessments";
+import type {
+  RiskAssessmentHazard,
+  RiskAssessmentTaskStep,
+} from "./api/types";
 
 const SITE_ID = "507f1f77bcf86cd799439011";
 const OWNER_ID = "507f1f77bcf86cd799439012";
+
+function hazard(
+  id: string,
+  taskStepId: string | null,
+): RiskAssessmentHazard {
+  return {
+    id,
+    hazard: `Hazard ${id}`,
+    consequences: "",
+    existingControls: "",
+    likelihood: 3,
+    severity: 3,
+    inherentLevel: "MEDIUM",
+    residualLikelihood: 2,
+    residualSeverity: 2,
+    residualLevel: "LOW",
+    additionalControls: "",
+    taskStepId,
+  };
+}
 
 describe("parseRiskAssessmentFilters", () => {
   it("returns the default state for an empty query string", () => {
@@ -147,5 +177,104 @@ describe("risk matrix", () => {
       inherent: null,
       residual: null,
     });
+  });
+});
+
+describe("controlled revisions and JHA task steps", () => {
+  it("derives current, superseded and review-due state like the server", () => {
+    expect(
+      isCurrentRiskAssessment({
+        status: "APPROVED",
+        supersededBy: null,
+      }),
+    ).toBe(true);
+    expect(
+      isCurrentRiskAssessment({
+        status: "APPROVED",
+        supersededBy: "revision-2",
+      }),
+    ).toBe(false);
+    expect(
+      isCurrentRiskAssessment({ status: "DRAFT", supersededBy: null }),
+    ).toBe(false);
+    expect(
+      isSupersededRiskAssessment({ supersededBy: "revision-2" }),
+    ).toBe(true);
+    expect(isSupersededRiskAssessment({ supersededBy: null })).toBe(false);
+
+    expect(
+      isRiskAssessmentReviewDue(
+        "2026-01-01T00:00:00.000Z",
+        new Date("2026-06-01T00:00:00.000Z"),
+      ),
+    ).toBe(true);
+    expect(
+      isRiskAssessmentReviewDue(
+        "2026-12-01T00:00:00.000Z",
+        new Date("2026-06-01T00:00:00.000Z"),
+      ),
+    ).toBe(false);
+    expect(isRiskAssessmentReviewDue(null)).toBe(false);
+    expect(isRiskAssessmentReviewDue("not-a-date")).toBe(false);
+    expect(riskAssessmentRevisionLabel(3)).toBe("Revision 3");
+  });
+
+  it("creates 24-hex task step ids", () => {
+    const first = createRiskTaskStepId();
+    const second = createRiskTaskStepId();
+
+    expect(first).toMatch(/^[0-9a-f]{24}$/);
+    expect(second).toMatch(/^[0-9a-f]{24}$/);
+    expect(first).not.toBe(second);
+  });
+
+  it("groups hazards by task step and keeps unassigned hazards general", () => {
+    const steps: RiskAssessmentTaskStep[] = [
+      { id: "step-inspect", sequence: 1, description: "Inspect scaffold" },
+      { id: "step-erect", sequence: 0, description: "Erect scaffold" },
+    ];
+    const groups = groupHazardsByTaskStep(
+      [
+        hazard("hazard-inspect", "step-inspect"),
+        hazard("hazard-erect", "step-erect"),
+        hazard("hazard-general", null),
+        hazard("hazard-unknown", "missing-step"),
+      ],
+      steps,
+    );
+
+    expect(
+      groups.map((group) => ({
+        title: group.title,
+        description: group.description,
+        hazards: group.hazards.map((item) => item.id),
+      })),
+    ).toEqual([
+      {
+        title: "Task step 1",
+        description: "Erect scaffold",
+        hazards: ["hazard-erect"],
+      },
+      {
+        title: "Task step 2",
+        description: "Inspect scaffold",
+        hazards: ["hazard-inspect"],
+      },
+      {
+        title: "General hazards",
+        description: null,
+        hazards: ["hazard-general", "hazard-unknown"],
+      },
+    ]);
+  });
+
+  it("omits the general group when every hazard has a task step", () => {
+    const groups = groupHazardsByTaskStep(
+      [hazard("hazard-erect", "step-erect")],
+      [{ id: "step-erect", sequence: 0, description: "Erect scaffold" }],
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].hazards).toHaveLength(1);
   });
 });

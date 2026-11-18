@@ -287,6 +287,102 @@ describe("attachments API", () => {
     expect(response.status).toBe(409);
   });
 
+  it("secures risk assessment evidence by assessment scope and archive state", async () => {
+    const project = await Project.create({
+      name: `Risk Evidence Project ${sequence + 1}`,
+      code: `REP${sequence + 1}`,
+    });
+    const site = await Site.create({
+      project: project._id,
+      name: `Risk Evidence Site ${sequence + 1}`,
+      code: `RES${sequence + 1}`,
+    });
+    const otherSite = await createSite();
+    const officer = await signInAsIkoshUser({
+      ikoshRole: "HSE_OFFICER",
+      assignedSites: [site._id],
+    });
+    const otherOfficer = await signInAsIkoshUser({
+      ikoshRole: "HSE_OFFICER",
+      assignedSites: [otherSite._id],
+    });
+    const manager = await signInAsIkoshUser({ ikoshRole: "HSE_MANAGER" });
+
+    const assessment = await request(app)
+      .post("/api/risk-assessments")
+      .set("Authorization", officer.authorization)
+      .send({
+        title: "Risk assessment with evidence",
+        projectId: String(project._id),
+        siteId: String(site._id),
+        ownerId: String(officer.user._id),
+        hazards: [
+          {
+            hazard: "Work at height",
+            likelihood: 3,
+            severity: 4,
+            residualLikelihood: 2,
+            residualSeverity: 3,
+          },
+        ],
+      });
+
+    expect(assessment.status).toBe(201);
+    const assessmentId = assessment.body.riskAssessment.id;
+
+    const created = await upload(officer.authorization, PNG, {
+      entityType: "risk_assessment",
+      entityId: assessmentId,
+    });
+
+    expect(created.status).toBe(201);
+    expect(created.body.attachment).toMatchObject({
+      entityType: "risk_assessment",
+      entityId: assessmentId,
+    });
+
+    const managerList = await request(app)
+      .get(
+        `/api/attachments?entityType=risk_assessment&entityId=${assessmentId}`,
+      )
+      .set("Authorization", manager.authorization);
+    const otherOfficerList = await request(app)
+      .get(
+        `/api/attachments?entityType=risk_assessment&entityId=${assessmentId}`,
+      )
+      .set("Authorization", otherOfficer.authorization);
+    const managerDownload = await request(app)
+      .get(`/api/attachments/${created.body.attachment.id}/download`)
+      .set("Authorization", manager.authorization);
+    const otherOfficerDownload = await request(app)
+      .get(`/api/attachments/${created.body.attachment.id}/download`)
+      .set("Authorization", otherOfficer.authorization);
+    const otherOfficerUpload = await upload(otherOfficer.authorization, PNG, {
+      entityType: "risk_assessment",
+      entityId: assessmentId,
+    });
+
+    expect(managerList.body.attachments).toHaveLength(1);
+    expect(otherOfficerList.body.attachments).toHaveLength(0);
+    expect(managerDownload.status).toBe(200);
+    expect(otherOfficerDownload.status).toBe(404);
+    expect(otherOfficerUpload.status).toBe(404);
+
+    const archived = await request(app)
+      .patch(`/api/risk-assessments/${assessmentId}/status`)
+      .set("Authorization", manager.authorization)
+      .send({ status: "ARCHIVED" });
+
+    expect(archived.status).toBe(200);
+
+    const archivedUpload = await upload(manager.authorization, PNG, {
+      entityType: "risk_assessment",
+      entityId: assessmentId,
+    });
+
+    expect(archivedUpload.status).toBe(409);
+  });
+
   it("audits attachment metadata updates reliably", async () => {
     const manager = await signInAsIkoshUser({ ikoshRole: "HSE_MANAGER" });
 

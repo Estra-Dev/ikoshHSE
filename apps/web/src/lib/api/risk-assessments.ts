@@ -9,9 +9,13 @@ import {
 import type { RiskAssessmentFilterState } from "@/lib/risk-assessments";
 import { useApi } from "./client";
 import type {
+  CorrectiveActionResponse,
   CreateRiskAssessmentInput,
+  CreateRiskAssessmentRevisionInput,
+  CreateRiskTreatmentActionInput,
   RiskAssessmentAssigneesResponse,
   RiskAssessmentResponse,
+  RiskAssessmentRevisionsResponse,
   RiskAssessmentsResponse,
   UpdateRiskAssessmentInput,
   UpdateRiskAssessmentStatusInput,
@@ -24,6 +28,8 @@ export const riskAssessmentKeys = {
     [...riskAssessmentKeys.listRoot, query] as const,
   detailRoot: ["risk-assessments", "detail"] as const,
   detail: (id: string) => [...riskAssessmentKeys.detailRoot, id] as const,
+  revisions: (id: string) =>
+    [...riskAssessmentKeys.detail(id), "revisions"] as const,
   assignees: () => [...riskAssessmentKeys.all, "assignees"] as const,
 };
 
@@ -138,5 +144,75 @@ export function useUpdateRiskAssessmentStatus() {
         input,
       ),
     onSuccess: () => invalidate(),
+  });
+}
+
+/** Ordered revision history for one controlled assessment lineage. */
+export function useRiskAssessmentRevisions(id: string) {
+  const api = useApi();
+
+  return useQuery({
+    queryKey: riskAssessmentKeys.revisions(id),
+    queryFn: () =>
+      api.get<RiskAssessmentRevisionsResponse>(
+        `/api/risk-assessments/${id}/revisions`,
+      ),
+    enabled: id.length > 0,
+  });
+}
+
+export function useCreateRiskAssessmentRevision() {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: CreateRiskAssessmentRevisionInput;
+    }) =>
+      api.post<RiskAssessmentResponse>(
+        `/api/risk-assessments/${id}/revisions`,
+        input,
+      ),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({
+        queryKey: riskAssessmentKeys.all,
+      });
+
+      return result;
+    },
+  });
+}
+
+/**
+ * Raises a treatment action from one hazard. The action is a regular CAPA, so
+ * the corrective action register and dashboard are invalidated too.
+ */
+export function useCreateRiskTreatmentAction() {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      assessmentId,
+      hazardId,
+      input,
+    }: {
+      assessmentId: string;
+      hazardId: string;
+      input: CreateRiskTreatmentActionInput;
+    }) =>
+      api.post<CorrectiveActionResponse>(
+        `/api/risk-assessments/${assessmentId}/hazards/${hazardId}/treatment-action`,
+        input,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["corrective-actions"],
+      });
+    },
   });
 }
