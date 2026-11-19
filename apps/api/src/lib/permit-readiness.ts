@@ -1,15 +1,55 @@
 /**
  * Permit readiness policy registry and pure evaluator.
  *
- * The registry is deliberately empty of requirements. A policy is a versioned
- * descriptor of the rules an approved procedure imposes; none of those rules
- * are inferred here. Production activation stays `null` until the governing
- * document is formally approved, and the activation guard refuses a draft.
+ * The registry contains the original empty working draft and a documented A03
+ * candidate. The candidate records A03 requirements and their fact mappings,
+ * but it is DRAFT, is not approved for activation, and has no transition gates.
+ * Production activation stays `null` until the governing document is formally
+ * approved, and the activation guard refuses a draft.
  *
  * `evaluatePermitReadiness` is pure: it never reads module state and never
  * assumes a requirement when no policy is supplied. Callers resolve a policy
  * for a permit's stamped `policyVersion` and pass it in explicitly.
  */
+
+import {
+  A03_CANDIDATE_POLICY,
+  A03_CANDIDATE_VERSION,
+  A03_DECISION_IDS,
+  A03_OPEN_DECISIONS,
+  A03_REQUIREMENT_IDS,
+  A03_REQUIREMENT_MAPPINGS,
+  A03_SOURCE,
+  a03RequirementsBlockedBy,
+  getA03RequirementMapping,
+  type A03DecisionId,
+  type A03DecisionScope,
+  type A03EnforcementState,
+  type A03OpenDecision,
+  type A03RequirementMapping,
+  type A03RequirementType,
+} from "./permit-readiness-a03.js";
+
+export {
+  A03_CANDIDATE_POLICY,
+  A03_CANDIDATE_VERSION,
+  A03_DECISION_IDS,
+  A03_OPEN_DECISIONS,
+  A03_REQUIREMENT_IDS,
+  A03_REQUIREMENT_MAPPINGS,
+  A03_SOURCE,
+  a03RequirementsBlockedBy,
+  getA03RequirementMapping,
+};
+
+export type {
+  A03DecisionId,
+  A03DecisionScope,
+  A03EnforcementState,
+  A03OpenDecision,
+  A03RequirementMapping,
+  A03RequirementType,
+};
 
 /** Lifecycle transitions a policy may gate. */
 export const PERMIT_READINESS_TRANSITIONS = [
@@ -34,8 +74,8 @@ export interface PermitReadinessSource {
 
 /**
  * One named requirement. `id` is the stable key a caller answers with a fact;
- * `label` is display text only. No requirement ids are defined until the
- * approved procedure lists them.
+ * `label` is display text only. A draft policy may document requirement ids
+ * without gating them; only an approved policy may activate gates.
  */
 export interface PermitReadinessRequirement {
   readonly id: string;
@@ -95,6 +135,7 @@ const WORKING_DRAFT_POLICY: PermitReadinessPolicy = Object.freeze({
 
 const PRODUCTION_REGISTRY: ReadonlyMap<number, PermitReadinessPolicy> = new Map([
   [WORKING_DRAFT_POLICY.version, WORKING_DRAFT_POLICY],
+  [A03_CANDIDATE_POLICY.version, A03_CANDIDATE_POLICY],
 ]);
 
 interface ActiveConfiguration {
