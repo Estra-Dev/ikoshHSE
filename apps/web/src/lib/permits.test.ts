@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { RiskAssessmentSummary } from "./api/types";
 import {
   buildPermitFilterSearchParams,
   canUsePermitNow,
@@ -8,13 +9,16 @@ import {
   isPermitExpired,
   isPermitInFlight,
   isPermitTerminal,
+  isRiskAssessmentEligibleForPermit,
   isWithinPermitValidity,
+  MAX_LINKED_RISK_ASSESSMENTS,
   nextPermitStatuses,
   parsePermitFilters,
   parseWorkersInvolved,
   permitDetailHref,
   PERMIT_CLOSURE_CHECK_LABELS,
   PERMIT_PAGE_SIZE,
+  toggleLinkedRiskAssessment,
 } from "./permits";
 
 describe("permit filters", () => {
@@ -303,5 +307,108 @@ describe("permit form helpers", () => {
 
   it("uses a 20-row register page by default", () => {
     expect(PERMIT_PAGE_SIZE).toBe(20);
+  });
+});
+
+describe("permit risk assessment links", () => {
+  const projectId = "507f1f77bcf86cd799439011";
+  const siteId = "507f1f77bcf86cd799439012";
+
+  function assessment(
+    overrides: Partial<
+      Pick<RiskAssessmentSummary, "status" | "supersededBy" | "project" | "site">
+    > = {},
+  ): Pick<
+    RiskAssessmentSummary,
+    "status" | "supersededBy" | "project" | "site"
+  > {
+    return {
+      status: "APPROVED" as const,
+      supersededBy: null,
+      project: { id: projectId, name: "Project" },
+      site: { id: siteId, name: "Site", code: "S1" },
+      ...overrides,
+    };
+  }
+
+  it("only accepts current approved assessments for the exact project and site", () => {
+    expect(
+      isRiskAssessmentEligibleForPermit(assessment(), projectId, siteId),
+    ).toBe(true);
+
+    expect(
+      isRiskAssessmentEligibleForPermit(
+        assessment({ project: { id: "507f1f77bcf86cd799439099", name: null } }),
+        projectId,
+        siteId,
+      ),
+    ).toBe(false);
+
+    expect(
+      isRiskAssessmentEligibleForPermit(
+        assessment({
+          site: { id: "507f1f77bcf86cd799439098", name: null, code: null },
+        }),
+        projectId,
+        siteId,
+      ),
+    ).toBe(false);
+
+    expect(
+      isRiskAssessmentEligibleForPermit(
+        assessment({ site: null }),
+        projectId,
+        siteId,
+      ),
+    ).toBe(false);
+
+    expect(
+      isRiskAssessmentEligibleForPermit(
+        assessment({ status: "DRAFT" }),
+        projectId,
+        siteId,
+      ),
+    ).toBe(false);
+
+    expect(
+      isRiskAssessmentEligibleForPermit(
+        assessment({ status: "ARCHIVED" }),
+        projectId,
+        siteId,
+      ),
+    ).toBe(false);
+
+    expect(
+      isRiskAssessmentEligibleForPermit(
+        assessment({ supersededBy: "507f1f77bcf86cd799439097" }),
+        projectId,
+        siteId,
+      ),
+    ).toBe(false);
+
+    expect(
+      isRiskAssessmentEligibleForPermit(assessment(), "", siteId),
+    ).toBe(false);
+    expect(
+      isRiskAssessmentEligibleForPermit(assessment(), projectId, ""),
+    ).toBe(false);
+  });
+
+  it("toggles links without duplicates", () => {
+    expect(toggleLinkedRiskAssessment([], "a")).toEqual(["a"]);
+    expect(toggleLinkedRiskAssessment(["a"], "b")).toEqual(["a", "b"]);
+    expect(toggleLinkedRiskAssessment(["a", "b"], "a")).toEqual(["b"]);
+    expect(toggleLinkedRiskAssessment(["a", "b"], "c")).toEqual(["a", "b", "c"]);
+  });
+
+  it("enforces the 10-link limit but still allows removals", () => {
+    const ids = Array.from(
+      { length: MAX_LINKED_RISK_ASSESSMENTS },
+      (_, index) => `assessment-${index}`,
+    );
+
+    expect(MAX_LINKED_RISK_ASSESSMENTS).toBe(10);
+    expect(toggleLinkedRiskAssessment(ids, "one-too-many")).toEqual(ids);
+    expect(toggleLinkedRiskAssessment(ids, ids[0])).toEqual(ids.slice(1));
   });
 });

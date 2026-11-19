@@ -3,7 +3,9 @@ import {
   PERMIT_TO_WORK_TYPES,
   type PermitStatus,
   type PermitWorkType,
+  type RiskAssessmentSummary,
 } from "./api/types";
+import { isCurrentRiskAssessment } from "./risk-assessments";
 
 /**
  * Pure URL-state, lifecycle and expiry helpers for the permit register.
@@ -16,6 +18,7 @@ import {
 export const PERMIT_PAGE_SIZE = 20;
 export const MAX_PERMIT_PAGE_SIZE = 100;
 export const MAX_PERMIT_SEARCH_LENGTH = 200;
+export const MAX_LINKED_RISK_ASSESSMENTS = 10;
 
 export interface PermitFilterState {
   q: string;
@@ -227,3 +230,41 @@ export const PERMIT_CLOSURE_CHECK_LABELS = {
   equipmentIsolated: "Equipment isolated and made safe",
   siteHandoverCompleted: "Site handover completed",
 } as const;
+
+/**
+ * A permit may only newly link a current approved assessment that belongs to
+ * the permit's exact project and site. Historical links are preserved by the
+ * API and handled separately in the editor.
+ */
+export function isRiskAssessmentEligibleForPermit(
+  assessment: Pick<
+    RiskAssessmentSummary,
+    "status" | "supersededBy" | "project" | "site"
+  >,
+  projectId: string,
+  siteId: string,
+): boolean {
+  return (
+    projectId.length > 0 &&
+    siteId.length > 0 &&
+    assessment.project.id === projectId &&
+    assessment.site?.id === siteId &&
+    isCurrentRiskAssessment(assessment)
+  );
+}
+
+/** Adds or removes a link, refusing to exceed the server's 10-link limit. */
+export function toggleLinkedRiskAssessment(
+  ids: readonly string[],
+  id: string,
+): string[] {
+  if (ids.includes(id)) {
+    return ids.filter((value) => value !== id);
+  }
+
+  if (ids.length >= MAX_LINKED_RISK_ASSESSMENTS) {
+    return [...ids];
+  }
+
+  return [...ids, id];
+}

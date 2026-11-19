@@ -16,13 +16,19 @@ import {
   PERMIT_PRECAUTIONS,
   PERMIT_TO_WORK_TYPES,
   type CreatePermitInput,
+  type PermitLinkedRiskAssessment,
   type PermitPrecaution,
   type PermitSummary,
   type PermitWorkType,
   type UpdatePermitInput,
 } from "@/lib/api/types";
-import { permitDetailHref, parseWorkersInvolved } from "@/lib/permits";
+import {
+  MAX_LINKED_RISK_ASSESSMENTS,
+  permitDetailHref,
+  parseWorkersInvolved,
+} from "@/lib/permits";
 import { formatHseLabel } from "@/lib/hse-dashboard";
+import { PermitRiskAssessmentSelector } from "./permit-risk-assessment-selector";
 
 interface HazardRow {
   key: string;
@@ -109,6 +115,9 @@ export function PermitForm({ permit, onDone, onCancel }: PermitFormProps) {
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState("");
+  const [linkedRiskAssessments, setLinkedRiskAssessments] = useState<
+    PermitLinkedRiskAssessment[]
+  >(permit?.linkedRiskAssessments ?? []);
 
   const assignees = usePermitAssignees(siteId);
 
@@ -181,6 +190,10 @@ export function PermitForm({ permit, onDone, onCancel }: PermitFormProps) {
       nextErrors.location = "Keep the location under 300 characters.";
     }
 
+    if (linkedRiskAssessments.length > MAX_LINKED_RISK_ASSESSMENTS) {
+      nextErrors.linkedRiskAssessments = `Link no more than ${MAX_LINKED_RISK_ASSESSMENTS} risk assessments.`;
+    }
+
     return nextErrors;
   }
 
@@ -232,6 +245,9 @@ export function PermitForm({ permit, onDone, onCancel }: PermitFormProps) {
         hazard: hazard.hazard.trim(),
         controlMeasures: hazard.controlMeasures.trim(),
       })),
+      riskAssessmentIds: linkedRiskAssessments.map(
+        (assessment) => assessment.id,
+      ),
     };
 
     if (location.trim()) {
@@ -334,6 +350,7 @@ export function PermitForm({ permit, onDone, onCancel }: PermitFormProps) {
                 setProjectId(event.target.value);
                 setSiteId("");
                 setResponsiblePersonId("");
+                setLinkedRiskAssessments([]);
                 setErrors((current) => ({
                   ...current,
                   projectId: "",
@@ -359,6 +376,7 @@ export function PermitForm({ permit, onDone, onCancel }: PermitFormProps) {
               onChange={(event) => {
                 setSiteId(event.target.value);
                 setResponsiblePersonId("");
+                setLinkedRiskAssessments([]);
                 setErrors((current) => ({
                   ...current,
                   siteId: "",
@@ -425,6 +443,14 @@ export function PermitForm({ permit, onDone, onCancel }: PermitFormProps) {
               })),
             ]}
             disabled={!siteId || assignees.isLoading}
+          />
+
+          <PermitRiskAssessmentSelector
+            projectId={projectId}
+            siteId={siteId}
+            selected={linkedRiskAssessments}
+            onChange={setLinkedRiskAssessments}
+            error={errors.linkedRiskAssessments}
           />
 
           <TextareaField

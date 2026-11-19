@@ -826,6 +826,22 @@ export interface PermitClosureChecks {
   siteHandoverCompleted: boolean;
 }
 
+/**
+ * Linked risk assessment expanded on individual permit responses. The list
+ * endpoint leaves `linkedRiskAssessments` empty, so callers must not assume
+ * detail-only fields are present in register rows.
+ */
+export interface PermitLinkedRiskAssessment {
+  id: string;
+  title: string;
+  revision: number;
+  isCurrent: boolean;
+  status: RiskAssessmentStatus | "";
+  project: PermitProjectRef;
+  site: PermitSiteRef | null;
+  owner: PermitUserRef | null;
+}
+
 /** Client mirror of `toPermitSummary`. */
 export interface PermitSummary {
   id: string;
@@ -835,6 +851,7 @@ export interface PermitSummary {
   project: PermitProjectRef;
   site: PermitSiteRef;
   location: string;
+  linkedRiskAssessments: PermitLinkedRiskAssessment[];
   validFrom: string;
   validTo: string;
   responsiblePerson: PermitUserRef | null;
@@ -908,6 +925,7 @@ export interface CreatePermitInput {
   workersInvolved: string[];
   requiredPrecautions: PermitPrecaution[];
   hazards: PermitHazardInput[];
+  riskAssessmentIds?: string[];
 }
 
 export interface UpdatePermitInput {
@@ -922,6 +940,7 @@ export interface UpdatePermitInput {
   workersInvolved?: string[];
   requiredPrecautions?: PermitPrecaution[];
   hazards?: PermitHazardInput[];
+  riskAssessmentIds?: string[];
 }
 
 export interface UpdatePermitStatusInput {

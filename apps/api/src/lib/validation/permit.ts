@@ -32,6 +32,8 @@ const permitContentShape = {
   workersInvolved: z.array(trimmedNonEmptyString(200)).min(1).max(50),
   requiredPrecautions: z.array(z.enum(PERMIT_PRECAUTIONS)).min(1).max(20),
   hazards: z.array(permitHazardSchema).min(1).max(50),
+  // The route deduplicates before enforcing the limit of 10 unique links.
+  riskAssessmentIds: z.array(objectIdSchema).optional(),
 };
 
 /**
@@ -77,6 +79,8 @@ export const updatePermitSchema = z
       .max(20)
       .optional(),
     hazards: z.array(permitHazardSchema).min(1).max(50).optional(),
+    // The route deduplicates before enforcing the limit of 10 unique links.
+    riskAssessmentIds: z.array(objectIdSchema).optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {

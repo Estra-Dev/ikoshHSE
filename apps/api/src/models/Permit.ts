@@ -96,6 +96,15 @@ const permitSchema = new Schema(
       immutable: true,
       index: true,
     },
+    // Optional linked risk assessments. Editable only while permit is DRAFT,
+    // with authorization validated by canEditPermit. Preserved when
+    // assessments are superseded.
+    riskAssessments: {
+      type: [Schema.Types.ObjectId],
+      ref: "RiskAssessment",
+      default: [],
+      index: true,
+    },
     project: {
       type: Schema.Types.ObjectId,
       ref: "Project",

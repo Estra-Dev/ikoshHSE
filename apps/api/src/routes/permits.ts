@@ -21,14 +21,9 @@ import {
   PERMIT_RESPONSIBLE_ROLES,
   type PermitStatus,
 } from "../lib/hse-constants.js";
-import {
-  canCreatePermits,
-} from "../lib/hse-permissions.js";
+import { canCreatePermits } from "../lib/hse-permissions.js";
 import { activePermitPolicyVersion } from "../lib/permit-readiness.js";
-import {
-  assertSiteAccess,
-  isSiteAssigned,
-} from "../lib/site-access.js";
+import { assertSiteAccess, isSiteAssigned } from "../lib/site-access.js";
 import {
   assertPermitAccess,
   canActivatePermit,
@@ -50,6 +45,7 @@ import {
 import { requireIkoshRole } from "../middleware/require-ikosh-role.js";
 import { Permit } from "../models/Permit.js";
 import { Project } from "../models/Project.js";
+import { RiskAssessment } from "../models/RiskAssessment.js";
 import { Site } from "../models/Site.js";
 import { User } from "../models/User.js";
 import { toPermitSummary } from "../serializers/permit.js";
@@ -69,6 +65,21 @@ const PERMIT_POPULATE = [
   { path: "cancelledBy", select: "firstName lastName" },
   { path: "closedBy", select: "firstName lastName" },
   { path: "createdBy", select: "firstName lastName" },
+];
+
+// Linked risk assessments are only expanded on individual permit responses.
+// The list endpoint deliberately uses PERMIT_POPULATE instead.
+const PERMIT_DETAIL_POPULATE = [
+  ...PERMIT_POPULATE,
+  {
+    path: "riskAssessments",
+    select: "title revision status supersededBy project site owner",
+    populate: [
+      { path: "project", select: "name" },
+      { path: "site", select: "name code" },
+      { path: "owner", select: "firstName lastName" },
+    ],
+  },
 ];
 
 // Every permit route requires an authenticated, active IKOSH employee with at
@@ -117,6 +128,59 @@ async function resolvePermitProjectAndSite(
   }
 
   return { project: project._id, site: site._id };
+}
+
+function uniqueRiskAssessmentIds(
+  ids: readonly string[] | undefined,
+): Types.ObjectId[] {
+  const seen = new Set<string>();
+  const unique: Types.ObjectId[] = [];
+
+  for (const id of ids ?? []) {
+    const objectId = new Types.ObjectId(id);
+    const key = String(objectId);
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    unique.push(objectId);
+  }
+
+  return unique;
+}
+
+/**
+ * Newly linked risk assessments must be current approvals on the exact permit
+ * project and site. Existing links are validated by the caller against only
+ * the IDs being added, so superseded historical references remain intact.
+ */
+async function assertRiskAssessmentLinksValid(
+  session: ClientSession,
+  ids: Types.ObjectId[],
+  project: Types.ObjectId,
+  site: Types.ObjectId,
+  context: "linked" | "newly linked",
+): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+
+  const linkedAssessments = await RiskAssessment.find({
+    _id: { $in: ids },
+    project,
+    site,
+    status: "APPROVED",
+    $or: [{ supersededBy: null }, { supersededBy: { $exists: false } }],
+  }).session(session);
+
+  if (linkedAssessments.length !== ids.length) {
+    throw new HttpError(
+      409,
+      `One or more ${context} risk assessments are not approved, current, or do not belong to this exact project and site.`,
+    );
+  }
 }
 
 /**
@@ -187,9 +251,7 @@ function isWithinValidity(
   permit: { validFrom: Date; validTo: Date },
   now: number,
 ): boolean {
-  return (
-    now >= permit.validFrom.getTime() && now <= permit.validTo.getTime()
-  );
+  return now >= permit.validFrom.getTime() && now <= permit.validTo.getTime();
 }
 
 // Eligible responsible people for the permit form. When a site is supplied,
@@ -362,6 +424,25 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
       data.siteId,
     );
 
+    const riskAssessmentIds = uniqueRiskAssessmentIds(
+      data.riskAssessmentIds,
+    );
+
+    if (riskAssessmentIds.length > 10) {
+      throw new HttpError(
+        400,
+        "A permit cannot be linked to more than 10 risk assessments.",
+      );
+    }
+
+    await assertRiskAssessmentLinksValid(
+      session,
+      riskAssessmentIds,
+      resolved.project,
+      resolved.site,
+      "linked",
+    );
+
     await assertPermitResponsiblePerson(
       data.responsiblePersonId,
       resolved.site,
@@ -370,6 +451,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
 
     const created = new Permit({
       workDescription: data.workDescription,
+      riskAssessments: riskAssessmentIds,
       workType: data.workType,
       status: "DRAFT",
       // Stamped once, at creation. Never recomputed by later edits.
@@ -399,7 +481,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     };
   });
 
-  await permit.populate(PERMIT_POPULATE);
+  await permit.populate(PERMIT_DETAIL_POPULATE);
 
   res.status(201).json({
     success: true,
@@ -413,7 +495,9 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
   const viewer = getIkoshUser(req);
   const permitId = parseObjectIdParam(req.params.id, "permit");
 
-  const permit = await Permit.findById(permitId).populate(PERMIT_POPULATE);
+  const permit = await Permit.findById(permitId).populate(
+    PERMIT_DETAIL_POPULATE,
+  );
 
   if (!permit) {
     throw new HttpError(404, "Permit not found.");
@@ -472,6 +556,40 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
       siteId,
     );
 
+    let riskAssessmentIds: Types.ObjectId[] | undefined;
+
+    if (data.riskAssessmentIds !== undefined) {
+      const uniqueIds = uniqueRiskAssessmentIds(data.riskAssessmentIds);
+
+      if (uniqueIds.length > 10) {
+        throw new HttpError(
+          400,
+          "A permit cannot be linked to more than 10 risk assessments.",
+        );
+      }
+
+      // Existing links remain valid historical references, even if
+      // their assessments have since been superseded.
+      const existingIds = new Set(
+        (permit.riskAssessments ?? []).map((id) => String(id)),
+      );
+
+      // Only newly added links must pass the current approval checks.
+      const newlyLinkedIds = uniqueIds.filter(
+        (id) => !existingIds.has(String(id)),
+      );
+
+      await assertRiskAssessmentLinksValid(
+        session,
+        newlyLinkedIds,
+        resolved.project,
+        resolved.site,
+        "newly linked",
+      );
+
+      riskAssessmentIds = uniqueIds;
+    }
+
     const responsiblePersonId =
       data.responsiblePersonId ?? String(permit.responsiblePerson);
 
@@ -513,6 +631,11 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
       permit.hazards = data.hazards as typeof permit.hazards;
     }
 
+    // Update risk assessments if provided
+    if (riskAssessmentIds !== undefined) {
+      permit.riskAssessments = riskAssessmentIds;
+    }
+
     permit.project = resolved.project;
     permit.site = resolved.site;
     permit.responsiblePerson = new Types.ObjectId(responsiblePersonId);
@@ -531,7 +654,7 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
     };
   });
 
-  await permit.populate(PERMIT_POPULATE);
+  await permit.populate(PERMIT_DETAIL_POPULATE);
 
   res.status(200).json({
     success: true,
@@ -565,10 +688,7 @@ router.patch(
       assertPermitAccess(viewer, permit);
 
       if (
-        !canTransitionPermitStatus(
-          permit.status as PermitStatus,
-          nextStatus,
-        )
+        !canTransitionPermitStatus(permit.status as PermitStatus, nextStatus)
       ) {
         throw new HttpError(
           409,
@@ -598,10 +718,7 @@ router.patch(
         }
 
         if (permit.validTo.getTime() < now) {
-          throw new HttpError(
-            409,
-            "An expired permit cannot be approved.",
-          );
+          throw new HttpError(409, "An expired permit cannot be approved.");
         }
 
         await assertPermitReadyForWork(permit, session);
@@ -622,7 +739,11 @@ router.patch(
       } else if (nextStatus === "ACTIVE") {
         const isResuming = permit.status === "SUSPENDED";
 
-        if (isResuming ? !canResumePermit(viewer, permit) : !canActivatePermit(viewer, permit)) {
+        if (
+          isResuming
+            ? !canResumePermit(viewer, permit)
+            : !canActivatePermit(viewer, permit)
+        ) {
           throw new HttpError(
             403,
             isResuming
@@ -741,7 +862,7 @@ router.patch(
       };
     });
 
-    await permit.populate(PERMIT_POPULATE);
+    await permit.populate(PERMIT_DETAIL_POPULATE);
 
     res.status(200).json({
       success: true,

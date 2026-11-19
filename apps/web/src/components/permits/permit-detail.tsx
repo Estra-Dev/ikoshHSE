@@ -15,15 +15,21 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { ArrowLeftIcon } from "@/components/icons";
 import { AttachmentsPanel } from "@/components/attachments/attachments-panel";
+import { RiskAssessmentStatusBadge } from "@/components/risk-assessments/risk-assessment-badges";
 import { formatUtcDateTime } from "@/lib/dashboard-format";
 import { formatHseLabel } from "@/lib/hse-dashboard";
 import { isPermitExpired } from "@/lib/permits";
+import {
+  riskAssessmentDetailHref,
+  riskAssessmentRevisionLabel,
+} from "@/lib/risk-assessments";
 import {
   canEditPermit,
   canUploadPermitEvidence,
 } from "@/lib/permissions";
 import {
   PermitExpiredBadge,
+  PermitRiskAssessmentStateBadge,
   PermitStatusBadge,
   PermitWorkTypeBadge,
 } from "./permit-badges";
@@ -334,6 +340,62 @@ export function PermitDetail({ permitId }: { permitId: string }) {
                     </li>
                   ))}
                 </ol>
+              )}
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Linked risk assessments"
+              description="Risk assessments linked to this permit. Historical links remain visible after a newer revision is approved."
+              action={
+                <Badge tone="neutral">
+                  {permit.linkedRiskAssessments.length}
+                </Badge>
+              }
+            />
+            <CardBody>
+              {permit.linkedRiskAssessments.length === 0 ? (
+                <p className="text-sm text-muted">
+                  No risk assessments linked to this permit.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {permit.linkedRiskAssessments.map((assessment) => (
+                    <li
+                      key={assessment.id}
+                      className="rounded-lg border border-line bg-navy-50/30 p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <Link
+                          href={riskAssessmentDetailHref(assessment.id)}
+                          className="text-sm font-medium text-navy-700 transition hover:text-navy-900"
+                        >
+                          {assessment.title || "Untitled risk assessment"}
+                        </Link>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {assessment.status ? (
+                            <RiskAssessmentStatusBadge
+                              status={assessment.status}
+                            />
+                          ) : (
+                            <Badge tone="neutral">Unknown status</Badge>
+                          )}
+                          <PermitRiskAssessmentStateBadge
+                            isCurrent={assessment.isCurrent}
+                            status={assessment.status}
+                          />
+                        </div>
+                      </div>
+                      <p className="mt-1 text-xs text-muted">
+                        {riskAssessmentRevisionLabel(assessment.revision)}
+                        {assessment.site?.name
+                          ? ` · ${assessment.site.name}`
+                          : ""}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
               )}
             </CardBody>
           </Card>

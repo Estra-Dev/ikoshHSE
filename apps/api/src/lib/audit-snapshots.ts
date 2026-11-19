@@ -351,6 +351,9 @@ export function permitAuditSnapshot(
     workType: permit.workType,
     status: permit.status,
     policyVersion: permit.policyVersion ?? null,
+    linkedRiskAssessmentIds: (permit.riskAssessments ?? []).map((ref) =>
+      idOf(ref),
+    ),
     validFrom: dateOf(permit.validFrom),
     validTo: dateOf(permit.validTo),
     responsiblePerson: idOf(permit.responsiblePerson),

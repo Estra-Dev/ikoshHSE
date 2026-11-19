@@ -6,7 +6,10 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { RiskAssessmentFilterState } from "@/lib/risk-assessments";
+import {
+  MAX_RISK_ASSESSMENT_PAGE_SIZE,
+  type RiskAssessmentFilterState,
+} from "@/lib/risk-assessments";
 import { useApi } from "./client";
 import type {
   CorrectiveActionResponse,
@@ -26,6 +29,8 @@ export const riskAssessmentKeys = {
   listRoot: ["risk-assessments", "list"] as const,
   list: (query: RiskAssessmentFilterState) =>
     [...riskAssessmentKeys.listRoot, query] as const,
+  linkable: (projectId: string, siteId: string) =>
+    [...riskAssessmentKeys.all, "linkable", projectId, siteId] as const,
   detailRoot: ["risk-assessments", "detail"] as const,
   detail: (id: string) => [...riskAssessmentKeys.detailRoot, id] as const,
   revisions: (id: string) =>
@@ -61,6 +66,40 @@ export function useRiskAssessments(query: RiskAssessmentFilterState) {
         buildListSearchParams(query),
       ),
     placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Approved assessments for a permit's exact project and site. The register
+ * endpoint still returns superseded revisions, so callers filter on `isCurrent`
+ * before offering a link.
+ */
+export function useLinkableRiskAssessments({
+  projectId,
+  siteId,
+}: {
+  projectId: string;
+  siteId: string;
+}) {
+  const api = useApi();
+
+  return useQuery({
+    queryKey: riskAssessmentKeys.linkable(projectId, siteId),
+    queryFn: () => {
+      const searchParams = new URLSearchParams({
+        projectId,
+        siteId,
+        status: "APPROVED",
+        page: "1",
+        limit: String(MAX_RISK_ASSESSMENT_PAGE_SIZE),
+      });
+
+      return api.get<RiskAssessmentsResponse>(
+        "/api/risk-assessments",
+        searchParams,
+      );
+    },
+    enabled: projectId.length > 0 && siteId.length > 0,
   });
 }
 

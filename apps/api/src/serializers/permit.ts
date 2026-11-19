@@ -19,6 +19,7 @@ export interface PermitLike {
   workType: string;
   status: string;
   policyVersion?: number | null;
+  riskAssessments?: unknown[];
   project: unknown;
   site: unknown;
   location?: string | null;
@@ -84,6 +85,17 @@ export interface SerializedPermitClosureChecks {
   siteHandoverCompleted: boolean;
 }
 
+export interface LinkedRiskAssessment {
+  id: string;
+  title: string;
+  revision: number;
+  isCurrent: boolean;
+  status: string;
+  project: ProjectRef;
+  site: SiteRef | null;
+  owner: UserRef | null;
+}
+
 export interface SerializedPermit {
   id: string;
   workDescription: string;
@@ -91,6 +103,7 @@ export interface SerializedPermit {
   status: string;
   /** Null for permits created before readiness policy activation. */
   policyVersion: number | null;
+  linkedRiskAssessments: LinkedRiskAssessment[];
   project: ProjectRef;
   site: SiteRef;
   location: string;
@@ -177,16 +190,84 @@ function hazardRef(
   };
 }
 
+interface LinkedRiskAssessmentLike {
+  _id: unknown;
+  title?: string | null;
+  revision?: number | null;
+  status?: string | null;
+  supersededBy?: unknown;
+  project?: unknown;
+  site?: unknown;
+  owner?: unknown;
+}
+
+function linkedRiskAssessmentRef(
+  value: unknown,
+): LinkedRiskAssessment | null {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("_id" in value)
+  ) {
+    return null;
+  }
+
+  const assessment = value as LinkedRiskAssessmentLike;
+
+  // Unpopulated ObjectIds also expose `_id`; only expand hydrated references.
+  if (!("status" in assessment) && !("title" in assessment)) {
+    return null;
+  }
+
+  const project = asDocument(assessment.project);
+  const site = asDocument(assessment.site);
+  const supersededBy = assessment.supersededBy;
+
+  return {
+    id: String(assessment._id),
+    title: assessment.title ?? "",
+    revision: assessment.revision ?? 1,
+    // Derived from the assessment's revision state, never stored separately.
+    isCurrent:
+      assessment.status === "APPROVED" &&
+      (supersededBy === null || supersededBy === undefined),
+    status: assessment.status ?? "",
+    project: {
+      id: project ? String(project._id) : "",
+      name: project?.name ?? null,
+    },
+    site: site
+      ? {
+          id: String(site._id),
+          name: site.name ?? null,
+          code: site.code ?? null,
+        }
+      : null,
+    owner: userRef(assessment.owner),
+  };
+}
+
 /**
  * Whitelists permit response fields and flattens populated references into
  * display-safe objects. `isExpired` is derived at response time so the client
  * never has to guess whether a permit's validity window has elapsed.
+ *
+ * Linked risk assessments are expanded only when the caller populated them;
+ * the list endpoint uses object IDs, which are skipped here.
  */
 export function toPermitSummary(permit: PermitLike): SerializedPermit {
   const project = asDocument(permit.project);
   const site = asDocument(permit.site);
   const now = Date.now();
-  const validTo = permit.validTo instanceof Date ? permit.validTo.getTime() : NaN;
+  const validTo =
+    permit.validTo instanceof Date ? permit.validTo.getTime() : NaN;
+
+  const linkedRiskAssessments = (permit.riskAssessments ?? [])
+    .map(linkedRiskAssessmentRef)
+    .filter(
+      (assessment): assessment is LinkedRiskAssessment =>
+        assessment !== null,
+    );
 
   return {
     id: String(permit._id),
@@ -194,6 +275,7 @@ export function toPermitSummary(permit: PermitLike): SerializedPermit {
     workType: permit.workType,
     status: permit.status,
     policyVersion: permit.policyVersion ?? null,
+    linkedRiskAssessments,
     project: {
       id: project ? String(project._id) : "",
       name: project?.name ?? null,
