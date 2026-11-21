@@ -4,6 +4,8 @@ import {
   PERMIT_PRECAUTIONS,
   PERMIT_STATUSES,
   PERMIT_TO_WORK_TYPES,
+  PARTICIPANT_ATTENDANCE_STATES,
+  WORKFORCE_PARTICIPANT_KINDS,
 } from "../hse-constants.js";
 
 /**
@@ -163,3 +165,156 @@ export const updatePermitStatusSchema = z
 export type UpdatePermitStatusInput = z.infer<
   typeof updatePermitStatusSchema
 >;
+
+/**
+ * Permit readiness capture validation.
+ *
+ * Actor ids and timestamps are deliberately absent from the recorded-event
+ * schemas. The route stamps them from the authenticated viewer so a client
+ * cannot attribute evidence to someone else or backdate it. Unknown nested
+ * keys (including forged `recordedBy`/`recordedAt` values) are stripped before
+ * the route sees them.
+ */
+export const permitReadinessPersonnelSchema = z
+  .object({
+    kind: z.enum(WORKFORCE_PARTICIPANT_KINDS),
+    employee: objectIdSchema.optional(),
+    contractorPersonnel: objectIdSchema.optional(),
+    contractor: objectIdSchema.optional(),
+    name: trimmedNonEmptyString(200),
+    role: trimmedNonEmptyString(100).optional(),
+    notes: trimmedNonEmptyString(500).optional(),
+    attendance: z.enum(PARTICIPANT_ATTENDANCE_STATES).optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.kind === "EMPLOYEE") {
+      if (!value.employee) {
+        context.addIssue({
+          code: "custom",
+          message: "An employee reference is required for employee personnel.",
+          path: ["employee"],
+        });
+      }
+
+      if (value.contractorPersonnel) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Contractor personnel cannot be supplied for employee personnel.",
+          path: ["contractorPersonnel"],
+        });
+      }
+
+      if (value.contractor) {
+        context.addIssue({
+          code: "custom",
+          message: "A contractor cannot be supplied for employee personnel.",
+          path: ["contractor"],
+        });
+      }
+
+      return;
+    }
+
+    if (!value.contractorPersonnel) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "A contractor personnel reference is required for contractor personnel.",
+        path: ["contractorPersonnel"],
+      });
+    }
+
+    if (value.employee) {
+      context.addIssue({
+        code: "custom",
+        message: "An employee cannot be supplied for contractor personnel.",
+        path: ["employee"],
+      });
+    }
+  });
+
+export const permitReadinessEquipmentSchema = z.object({
+  name: trimmedNonEmptyString(200),
+  reference: trimmedNonEmptyString(100).optional(),
+  inspection: objectIdSchema.optional(),
+  condition: trimmedNonEmptyString(200).optional(),
+});
+
+export const permitReadinessIsolationSchema = z.object({
+  point: trimmedNonEmptyString(200),
+  method: trimmedNonEmptyString(200),
+  tagNumber: trimmedNonEmptyString(50).optional(),
+  attachmentIds: z.array(objectIdSchema).min(1).max(20),
+});
+
+export const permitReadinessGasTestSchema = z.object({
+  area: trimmedNonEmptyString(200).optional(),
+  instrument: trimmedNonEmptyString(200).optional(),
+  oxygenPct: z.number().min(0).max(100).optional(),
+  lelPct: z.number().min(0).max(100).optional(),
+  h2sPpm: z.number().min(0).optional(),
+  coPpm: z.number().min(0).optional(),
+  result: trimmedNonEmptyString(200).optional(),
+  attachmentIds: z.array(objectIdSchema).min(1).max(20),
+});
+
+export const permitReadinessLinksSchema = z.object({
+  inspectionIds: z.array(objectIdSchema).optional(),
+  ppeIssuanceIds: z.array(objectIdSchema).optional(),
+  correctiveActionIds: z.array(objectIdSchema).optional(),
+  contractorIds: z.array(objectIdSchema).optional(),
+  toolboxTalkId: objectIdSchema.nullable().optional(),
+});
+
+export const permitReadinessWorksiteVerificationSchema = z
+  .object({
+    // The verifier and timestamp are stamped by the server from the
+    // authenticated viewer. Any client-supplied verifier is stripped.
+    notes: trimmedNonEmptyString(500).optional(),
+    attachmentIds: z.array(objectIdSchema).optional(),
+  })
+  .nullable()
+  .optional();
+
+export const permitReadinessAttestationSchema = z.object({
+  requirementId: trimmedNonEmptyString(100),
+  state: z.enum(["SATISFIED", "NOT_APPLICABLE"]),
+  note: trimmedNonEmptyString(500).optional(),
+  attachmentIds: z.array(objectIdSchema).optional(),
+});
+
+export const permitReadinessSchema = z
+  .object({
+    personnel: z.array(permitReadinessPersonnelSchema).optional(),
+    equipment: z.array(permitReadinessEquipmentSchema).optional(),
+    isolations: z.array(permitReadinessIsolationSchema).optional(),
+    gasTests: z.array(permitReadinessGasTestSchema).optional(),
+    links: permitReadinessLinksSchema.optional(),
+    worksiteVerification: permitReadinessWorksiteVerificationSchema,
+    attestations: z.array(permitReadinessAttestationSchema).optional(),
+  })
+  .strict();
+
+export type PermitReadinessPersonnelInput = z.infer<
+  typeof permitReadinessPersonnelSchema
+>;
+export type PermitReadinessEquipmentInput = z.infer<
+  typeof permitReadinessEquipmentSchema
+>;
+export type PermitReadinessIsolationInput = z.infer<
+  typeof permitReadinessIsolationSchema
+>;
+export type PermitReadinessGasTestInput = z.infer<
+  typeof permitReadinessGasTestSchema
+>;
+export type PermitReadinessLinksInput = z.infer<
+  typeof permitReadinessLinksSchema
+>;
+export type PermitReadinessWorksiteVerificationInput = z.infer<
+  typeof permitReadinessWorksiteVerificationSchema
+>;
+export type PermitReadinessAttestationInput = z.infer<
+  typeof permitReadinessAttestationSchema
+>;
+export type UpdatePermitReadinessInput = z.infer<typeof permitReadinessSchema>;

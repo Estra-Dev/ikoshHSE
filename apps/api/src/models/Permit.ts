@@ -4,6 +4,7 @@ import {
   PERMIT_STATUSES,
   PERMIT_TO_WORK_TYPES,
 } from "../lib/hse-constants.js";
+import { participantFields } from "./participant.js";
 
 /**
  * A hazard identified for the permitted work, together with the controls that
@@ -58,6 +59,356 @@ const permitClosureChecksSchema = new Schema(
     versionKey: false,
   },
 );
+
+/**
+ * Personnel involved in the permitted work. Employee and contractor
+ * populations stay separate, mirroring the shared participant model.
+ */
+const permitReadinessPersonnelSchema = new Schema(
+  {
+    ...participantFields,
+    role: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+  },
+  {
+    _id: false,
+    timestamps: false,
+    versionKey: false,
+  },
+);
+
+/** Equipment recorded as part of the permit's ready-to-work evidence. */
+const permitReadinessEquipmentSchema = new Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    reference: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    inspection: {
+      type: Schema.Types.ObjectId,
+      ref: "Inspection",
+      default: null,
+    },
+    condition: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+  },
+  {
+    _id: false,
+    timestamps: false,
+    versionKey: false,
+  },
+);
+
+/**
+ * Isolation record. These are recorded events: once written they are kept as
+ * history and later captures append new records rather than replacing them.
+ */
+const permitReadinessIsolationSchema = new Schema(
+  {
+    point: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    method: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    tagNumber: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    attachmentIds: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "Attachment",
+        },
+      ],
+      default: [],
+    },
+    recordedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    recordedAt: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+  },
+  {
+    timestamps: false,
+    versionKey: false,
+  },
+);
+
+/**
+ * Gas-test record. Readings are stored for the operational record but are
+ * deliberately excluded from audit snapshots.
+ */
+const permitReadinessGasTestSchema = new Schema(
+  {
+    area: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    instrument: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    oxygenPct: {
+      type: Number,
+      default: null,
+    },
+    lelPct: {
+      type: Number,
+      default: null,
+    },
+    h2sPpm: {
+      type: Number,
+      default: null,
+    },
+    coPpm: {
+      type: Number,
+      default: null,
+    },
+    result: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    attachmentIds: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "Attachment",
+        },
+      ],
+      default: [],
+    },
+    recordedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    recordedAt: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+  },
+  {
+    timestamps: false,
+    versionKey: false,
+  },
+);
+
+/** Editable draft links to other HSE records. */
+const permitReadinessLinksSchema = new Schema(
+  {
+    inspectionIds: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "Inspection",
+        },
+      ],
+      default: [],
+    },
+    ppeIssuanceIds: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "PpeIssuance",
+        },
+      ],
+      default: [],
+    },
+    correctiveActionIds: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "CorrectiveAction",
+        },
+      ],
+      default: [],
+    },
+    contractorIds: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "Contractor",
+        },
+      ],
+      default: [],
+    },
+    toolboxTalkId: {
+      type: Schema.Types.ObjectId,
+      ref: "ToolboxTalk",
+      default: null,
+    },
+  },
+  {
+    _id: false,
+    timestamps: false,
+    versionKey: false,
+  },
+);
+
+/**
+ * Worksite verification. The current verification is kept at
+ * `worksiteVerification`; earlier verifications are retained in
+ * `worksiteVerificationHistory` so recording a newer verification never
+ * destroys the existing history.
+ */
+const permitReadinessWorksiteVerificationSchema = new Schema(
+  {
+    verifiedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    verifiedAt: {
+      type: Date,
+      default: null,
+    },
+    notes: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    attachmentIds: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "Attachment",
+        },
+      ],
+      default: [],
+    },
+  },
+  {
+    timestamps: false,
+    versionKey: false,
+  },
+);
+
+/**
+ * Readiness attestation. This is a declaration by a named user, not proof
+ * that a blocked organizational decision has been made.
+ */
+const permitReadinessAttestationSchema = new Schema(
+  {
+    requirementId: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    state: {
+      type: String,
+      enum: ["SATISFIED", "NOT_APPLICABLE"],
+      required: true,
+    },
+    note: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    attachmentIds: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "Attachment",
+        },
+      ],
+      default: [],
+    },
+    recordedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    recordedAt: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+  },
+  {
+    timestamps: false,
+    versionKey: false,
+  },
+);
+
+/**
+ * Permit readiness facts and evidence captured during drafting.
+ *
+ * This embedded document tracks the A03 readiness facts that can be recorded
+ * before a permit is activated. It is mutable only while the permit is DRAFT.
+ */
+const permitReadinessSchema = new Schema(
+  {
+    personnel: {
+      type: [permitReadinessPersonnelSchema],
+      default: [],
+    },
+    equipment: {
+      type: [permitReadinessEquipmentSchema],
+      default: [],
+    },
+    isolations: {
+      type: [permitReadinessIsolationSchema],
+      default: [],
+    },
+    gasTests: {
+      type: [permitReadinessGasTestSchema],
+      default: [],
+    },
+    links: {
+      type: permitReadinessLinksSchema,
+      default: null,
+    },
+    worksiteVerification: {
+      type: permitReadinessWorksiteVerificationSchema,
+      default: null,
+    },
+    worksiteVerificationHistory: {
+      type: [permitReadinessWorksiteVerificationSchema],
+      default: [],
+    },
+    attestations: {
+      type: [permitReadinessAttestationSchema],
+      default: [],
+    },
+  },
+  {
+    _id: false,
+    timestamps: false,
+    versionKey: false,
+  },
+);
+
+export type PermitReadinessDocument = InferSchemaType<
+  typeof permitReadinessSchema
+>;
 
 /**
  * A permit to work on a specific project site.
@@ -246,6 +597,10 @@ const permitSchema = new Schema(
     },
     closureChecks: {
       type: permitClosureChecksSchema,
+      default: null,
+    },
+    readiness: {
+      type: permitReadinessSchema,
       default: null,
     },
     createdBy: {

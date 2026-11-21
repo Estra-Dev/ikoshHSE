@@ -134,6 +134,17 @@ export function canEditPermit(
   );
 }
 
+/** Readiness capture is allowed only while the permit is DRAFT, by the creator, responsible person or management. */
+export function canRecordPermitReadiness(
+  viewer: PermitViewer,
+  permit: PermitAccessLike,
+): boolean {
+  if (permit.status !== "DRAFT") {
+    return false;
+  }
+  return canEditPermit(viewer, permit);
+}
+
 /** The same authors that can edit a draft can submit it for review. */
 export function canSubmitPermit(
   viewer: PermitViewer,

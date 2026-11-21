@@ -387,6 +387,114 @@ export function permitAuditSnapshot(
   };
 }
 
+interface ReadinessLinksAuditLike {
+  inspectionIds?: readonly unknown[];
+  ppeIssuanceIds?: readonly unknown[];
+  correctiveActionIds?: readonly unknown[];
+  contractorIds?: readonly unknown[];
+  toolboxTalkId?: unknown;
+}
+
+interface ReadinessWorksiteVerificationAuditLike {
+  verifiedBy?: unknown;
+  verifiedAt?: unknown;
+  attachmentIds?: readonly unknown[];
+}
+
+interface ReadinessAttestationAuditLike {
+  requirementId?: string | null;
+  state?: string | null;
+  recordedBy?: unknown;
+  recordedAt?: unknown;
+  attachmentIds?: readonly unknown[];
+}
+
+interface PermitReadinessAuditLike {
+  personnel?: readonly unknown[];
+  equipment?: readonly unknown[];
+  isolations?: readonly unknown[];
+  gasTests?: readonly unknown[];
+  links?: ReadinessLinksAuditLike | null;
+  worksiteVerification?: ReadinessWorksiteVerificationAuditLike | null;
+  worksiteVerificationHistory?: readonly ReadinessWorksiteVerificationAuditLike[];
+  attestations?: readonly ReadinessAttestationAuditLike[];
+}
+
+function readinessLinksAuditSnapshot(
+  links: ReadinessLinksAuditLike | null | undefined,
+): Record<string, unknown> | null {
+  if (!links) {
+    return null;
+  }
+
+  return {
+    inspectionIds: (links.inspectionIds ?? []).map(idOf),
+    ppeIssuanceIds: (links.ppeIssuanceIds ?? []).map(idOf),
+    correctiveActionIds: (links.correctiveActionIds ?? []).map(idOf),
+    contractorIds: (links.contractorIds ?? []).map(idOf),
+    toolboxTalkId: idOf(links.toolboxTalkId),
+  };
+}
+
+function worksiteVerificationAuditSnapshot(
+  verification: ReadinessWorksiteVerificationAuditLike | null | undefined,
+): Record<string, unknown> | null {
+  if (!verification) {
+    return null;
+  }
+
+  return {
+    verifiedBy: idOf(verification.verifiedBy),
+    verifiedAt: dateOf(verification.verifiedAt),
+    attachmentIds: (verification.attachmentIds ?? []).map(idOf),
+  };
+}
+
+/**
+ * Permit readiness snapshot. It records identifiers, counts and declaration
+ * states only. Notes, names, isolation descriptions and gas readings are
+ * deliberately excluded because they are free text or sensitive measurements.
+ */
+export function permitReadinessAuditSnapshot(
+  readiness: PermitReadinessAuditLike | null | undefined,
+): Record<string, unknown> {
+  if (!readiness) {
+    return {
+      personnelCount: 0,
+      equipmentCount: 0,
+      isolationCount: 0,
+      gasTestCount: 0,
+      links: null,
+      worksiteVerification: null,
+      worksiteVerificationHistoryCount: 0,
+      attestationCount: 0,
+      attestations: [],
+    };
+  }
+
+  return {
+    personnelCount: (readiness.personnel ?? []).length,
+    equipmentCount: (readiness.equipment ?? []).length,
+    isolationCount: (readiness.isolations ?? []).length,
+    gasTestCount: (readiness.gasTests ?? []).length,
+    links: readinessLinksAuditSnapshot(readiness.links),
+    worksiteVerification: worksiteVerificationAuditSnapshot(
+      readiness.worksiteVerification,
+    ),
+    worksiteVerificationHistoryCount: (
+      readiness.worksiteVerificationHistory ?? []
+    ).length,
+    attestationCount: (readiness.attestations ?? []).length,
+    attestations: (readiness.attestations ?? []).map((attestation) => ({
+      requirementId: attestation.requirementId ?? null,
+      state: attestation.state ?? null,
+      recordedBy: idOf(attestation.recordedBy),
+      recordedAt: dateOf(attestation.recordedAt),
+      attachmentIds: (attestation.attachmentIds ?? []).map(idOf),
+    })),
+  };
+}
+
 /**
  * Training course snapshots record catalogue metadata only. Titles and
  * descriptions are free text and are deliberately excluded.

@@ -53,6 +53,7 @@ export interface PermitLike {
   createdBy?: unknown;
   createdAt: Date;
   updatedAt: Date;
+  readiness?: unknown;
 }
 
 export interface UserRef {
@@ -139,6 +140,7 @@ export interface SerializedPermit {
   createdBy: UserRef | null;
   createdAt: string;
   updatedAt: string;
+  readiness?: unknown;
 }
 
 interface RefDocument {
@@ -255,7 +257,18 @@ function linkedRiskAssessmentRef(
  * Linked risk assessments are expanded only when the caller populated them;
  * the list endpoint uses object IDs, which are skipped here.
  */
-export function toPermitSummary(permit: PermitLike): SerializedPermit {
+export interface PermitSerializeOptions {
+  /**
+   * Readiness is expanded only for individual permit responses. The register
+   * list deliberately omits it so list payloads stay small.
+   */
+  includeReadiness?: boolean;
+}
+
+export function toPermitSummary(
+  permit: PermitLike,
+  options: PermitSerializeOptions = {},
+): SerializedPermit {
   const project = asDocument(permit.project);
   const site = asDocument(permit.site);
   const now = Date.now();
@@ -320,6 +333,9 @@ export function toPermitSummary(permit: PermitLike): SerializedPermit {
           siteHandoverCompleted: permit.closureChecks.siteHandoverCompleted,
         }
       : null,
+    ...(options.includeReadiness
+      ? { readiness: permit.readiness ?? null }
+      : {}),
     isExpired:
       Number.isFinite(validTo) &&
       validTo < now &&
@@ -328,4 +344,9 @@ export function toPermitSummary(permit: PermitLike): SerializedPermit {
     createdAt: permit.createdAt.toISOString(),
     updatedAt: permit.updatedAt.toISOString(),
   };
+}
+
+/** Individual permit response including captured readiness. */
+export function toPermitDetail(permit: PermitLike): SerializedPermit {
+  return toPermitSummary(permit, { includeReadiness: true });
 }
