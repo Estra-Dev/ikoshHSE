@@ -32,6 +32,7 @@ import {
 } from "../lib/hse-constants.js";
 import { canCreatePermits } from "../lib/hse-permissions.js";
 import { activePermitPolicyVersion } from "../lib/permit-readiness.js";
+import { loadPermitReadinessEvaluation } from "../lib/permit-readiness-evaluation.js";
 import { assertSiteAccess, isSiteAssigned } from "../lib/site-access.js";
 import {
   assertPermitAccess,
@@ -1014,9 +1015,13 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
 
   assertPermitAccess(viewer, permit);
 
+  // Read-only A03 visibility. Evaluation happens after authorization and only
+  // uses records linked to this permit; it never gates the response.
+  const readinessEvaluation = await loadPermitReadinessEvaluation(permit);
+
   res.status(200).json({
     success: true,
-    permit: toPermitDetail(permit),
+    permit: toPermitDetail(permit, { readinessEvaluation }),
   });
 });
 

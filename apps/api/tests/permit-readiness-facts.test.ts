@@ -37,6 +37,7 @@ function fullPermit(
         controlMeasures: "Gas testing and a dedicated fire watch",
       },
     ],
+    riskAssessments: [],
     createdBy: "64b000000000000000000004",
     createdAt: NOW,
     updatedAt: NOW,
@@ -172,7 +173,7 @@ describe("buildPermitReadinessFacts", () => {
     }
   });
 
-  it("derives linked record facts only when the linked records are valid", () => {
+  it("keeps equipment/PPE inspection outstanding without verifiable evidence", () => {
     const project = "64b000000000000000000001";
     const site = "64b000000000000000000002";
     const inspectionId = "64b000000000000000000010";
@@ -239,7 +240,10 @@ describe("buildPermitReadinessFacts", () => {
       },
     });
 
-    expect(result.facts.equipment_ppe_inspection).toBe(true);
+    // A completed generic inspection and an issued PPE record do not prove the
+    // specific equipment/PPE was inspected and found fit for use.
+    expect(result.facts.equipment_ppe_inspection).toBeUndefined();
+    expect(result.automatic).not.toContain("equipment_ppe_inspection");
     expect(result.facts.critical_actions_and_residual_risk).not.toBe(true);
     expect(result.facts.worker_briefing).toBe(true);
     expect(result.facts.current_risk_assessment).toBeUndefined();
@@ -285,7 +289,61 @@ describe("buildPermitReadinessFacts", () => {
     });
 
     expect(incomplete.facts.equipment_ppe_inspection).toBeUndefined();
+    expect(incomplete.automatic).not.toContain("equipment_ppe_inspection");
     expect(incomplete.facts.critical_actions_and_residual_risk).toBeUndefined();
+  });
+
+  it("only counts risk assessments linked to the permit", () => {
+    const project = "64b000000000000000000001";
+    const site = "64b000000000000000000002";
+    const linkedId = "64b000000000000000000040";
+    const unlinkedId = "64b000000000000000000041";
+
+    const assessment = (id: string) => ({
+      _id: id,
+      status: "APPROVED",
+      supersededBy: null,
+      project,
+      site,
+    });
+
+    const linked = buildPermitReadinessFacts({
+      permit: fullPermit({
+        project,
+        site,
+        riskAssessments: [linkedId],
+      }),
+      riskAssessments: [assessment(linkedId)],
+    });
+    expect(linked.facts.current_risk_assessment).toBe(true);
+    expect(linked.automatic).toContain("current_risk_assessment");
+
+    const unlinked = buildPermitReadinessFacts({
+      permit: fullPermit({
+        project,
+        site,
+        riskAssessments: [],
+      }),
+      // Same project and site, but not linked to this permit.
+      riskAssessments: [assessment(unlinkedId)],
+    });
+    expect(unlinked.facts.current_risk_assessment).toBeUndefined();
+    expect(unlinked.automatic).not.toContain("current_risk_assessment");
+
+    const superseded = buildPermitReadinessFacts({
+      permit: fullPermit({
+        project,
+        site,
+        riskAssessments: [linkedId],
+      }),
+      riskAssessments: [
+        {
+          ...assessment(linkedId),
+          supersededBy: "64b000000000000000000042",
+        },
+      ],
+    });
+    expect(superseded.facts.current_risk_assessment).toBeUndefined();
   });
 
   it("requires every linked contractor to resolve as active and engaged", () => {

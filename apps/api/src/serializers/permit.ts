@@ -1,4 +1,5 @@
 import { isPermitTerminalStatus } from "../lib/hse-constants.js";
+import type { PermitReadinessEvaluation } from "../lib/permit-readiness-evaluation.js";
 
 export interface PermitHazardLike {
   _id?: unknown;
@@ -141,6 +142,8 @@ export interface SerializedPermit {
   createdAt: string;
   updatedAt: string;
   readiness?: unknown;
+  /** Sanitized A03 draft-preview evaluation; individual detail responses only. */
+  readinessEvaluation?: PermitReadinessEvaluation;
 }
 
 interface RefDocument {
@@ -346,7 +349,20 @@ export function toPermitSummary(
   };
 }
 
-/** Individual permit response including captured readiness. */
-export function toPermitDetail(permit: PermitLike): SerializedPermit {
-  return toPermitSummary(permit, { includeReadiness: true });
+export interface PermitDetailOptions {
+  /** Computed by the detail route; omitted from list and write responses. */
+  readinessEvaluation?: PermitReadinessEvaluation;
+}
+
+/** Individual permit response including captured readiness and its evaluation. */
+export function toPermitDetail(
+  permit: PermitLike,
+  options: PermitDetailOptions = {},
+): SerializedPermit {
+  return {
+    ...toPermitSummary(permit, { includeReadiness: true }),
+    ...(options.readinessEvaluation
+      ? { readinessEvaluation: options.readinessEvaluation }
+      : {}),
+  };
 }

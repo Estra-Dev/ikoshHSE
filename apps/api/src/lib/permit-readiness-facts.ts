@@ -80,6 +80,8 @@ export interface PermitReadinessFactPermit {
   workersInvolved?: readonly string[];
   requiredPrecautions?: readonly string[];
   hazards?: readonly PermitReadinessFactHazard[];
+  /** Risk assessments explicitly linked to this permit. */
+  riskAssessments?: readonly unknown[];
   submittedBy?: unknown;
   submittedAt?: Date | string | null;
   approvedBy?: unknown;
@@ -428,10 +430,25 @@ export function buildPermitReadinessFacts(
     satisfyAutomatically("records_attributable");
   }
 
-  const currentRiskAssessment = (input.riskAssessments ?? []).some(
-    (assessment) =>
-      isCurrentApprovedRiskAssessment(assessment, projectId, siteId),
+  // Only assessments linked to this permit can satisfy the requirement. A
+  // current approval on the same project and site is not enough: it may relate
+  // to different work.
+  const linkedRiskAssessmentIds = new Set(
+    (permit.riskAssessments ?? [])
+      .map(idOf)
+      .filter((id): id is string => id !== null),
   );
+  const currentRiskAssessment =
+    linkedRiskAssessmentIds.size > 0 &&
+    (input.riskAssessments ?? []).some((assessment) => {
+      const assessmentId = idOf(assessment._id);
+
+      return (
+        assessmentId !== null &&
+        linkedRiskAssessmentIds.has(assessmentId) &&
+        isCurrentApprovedRiskAssessment(assessment, projectId, siteId)
+      );
+    });
 
   if (currentRiskAssessment) {
     satisfyAutomatically("current_risk_assessment");
@@ -463,48 +480,11 @@ export function buildPermitReadinessFacts(
 
   const links = readiness?.links ?? null;
 
-  // Equipment/PPE readiness needs both an inspection for the recorded
-  // equipment/tooling and current PPE evidence; one alone does not confirm the
-  // A03 requirement.
-  const linkedInspectionIds = new Set(
-    [
-      ...(links?.inspectionIds ?? []),
-      ...(readiness?.equipment ?? []).map(
-        (equipment) => equipment.inspection,
-      ),
-    ]
-      .map(idOf)
-      .filter((id): id is string => id !== null),
-  );
-  const completedInspections = (input.inspections ?? []).filter(
-    (inspection) => {
-      const inspectionId = idOf(inspection._id);
-      return (
-        inspectionId !== null &&
-        linkedInspectionIds.has(inspectionId) &&
-        inspection.status === "COMPLETED" &&
-        matchesProjectAndSite(inspection, projectId, siteId)
-      );
-    },
-  );
-  const linkedPpeIds = new Set(
-    (links?.ppeIssuanceIds ?? [])
-      .map(idOf)
-      .filter((id): id is string => id !== null),
-  );
-  const issuedPpe = (input.ppeIssuances ?? []).filter((issuance) => {
-    const issuanceId = idOf(issuance._id);
-    return (
-      issuanceId !== null &&
-      linkedPpeIds.has(issuanceId) &&
-      issuance.status === "ISSUED" &&
-      matchesProjectAndSite(issuance, projectId, siteId)
-    );
-  });
-
-  if (completedInspections.length > 0 && issuedPpe.length > 0) {
-    satisfyAutomatically("equipment_ppe_inspection");
-  }
+  // A completed inspection linked to the permit and an issued PPE record are
+  // not evidence that the specific tools, equipment and PPE were inspected and
+  // found fit for use. Generic inspections do not identify the items checked or
+  // record a fit-for-use decision, so this fact stays outstanding until
+  // suitable, verifiable inspection evidence exists.
 
   // Verified corrective actions are linked for traceability, but they do not
   // establish residual-risk acceptance. The acceptance record and its
