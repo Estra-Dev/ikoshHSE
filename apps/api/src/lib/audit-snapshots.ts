@@ -387,6 +387,36 @@ export function permitAuditSnapshot(
   };
 }
 
+interface PermitOperationalRecordAuditLike {
+  _id?: unknown;
+  type?: string | null;
+  attachmentIds?: readonly unknown[] | null;
+}
+
+interface PermitOperationalRecordAuditContext {
+  permitId: unknown;
+  project: unknown;
+  site: unknown;
+}
+
+/**
+ * Whitelisted snapshot for one appended permit operational record. Notes,
+ * filenames, storage keys and raw attachment data are deliberately excluded.
+ */
+export function permitOperationalRecordAuditSnapshot(
+  record: PermitOperationalRecordAuditLike,
+  context: PermitOperationalRecordAuditContext,
+): Record<string, unknown> {
+  return {
+    recordId: idOf(record._id),
+    permitId: idOf(context.permitId),
+    projectId: idOf(context.project),
+    siteId: idOf(context.site),
+    type: record.type ?? null,
+    attachmentCount: (record.attachmentIds ?? []).length,
+  };
+}
+
 interface ReadinessLinksAuditLike {
   inspectionIds?: readonly unknown[];
   ppeIssuanceIds?: readonly unknown[];

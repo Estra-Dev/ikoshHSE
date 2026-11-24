@@ -17,6 +17,7 @@ import {
   updatePermitSchema,
   updatePermitStatusSchema,
   permitReadinessSchema,
+  permitOperationalRecordSchema,
   type PermitReadinessAttestationInput,
   type PermitReadinessEquipmentInput,
   type PermitReadinessPersonnelInput,
@@ -30,7 +31,7 @@ import {
   PERMIT_RESPONSIBLE_ROLES,
   type PermitStatus,
 } from "../lib/hse-constants.js";
-import { canCreatePermits } from "../lib/hse-permissions.js";
+import { canCreatePermits, canOperatePermits } from "../lib/hse-permissions.js";
 import { activePermitPolicyVersion } from "../lib/permit-readiness.js";
 import { loadPermitReadinessEvaluation } from "../lib/permit-readiness-evaluation.js";
 import { assertSiteAccess, isSiteAssigned } from "../lib/site-access.js";
@@ -51,6 +52,7 @@ import { runAuditedMutation } from "../lib/audit-log.js";
 import {
   permitAuditSnapshot,
   permitReadinessAuditSnapshot,
+  permitOperationalRecordAuditSnapshot,
 } from "../lib/audit-snapshots.js";
 import { getA03RequirementMapping } from "../lib/permit-readiness-a03.js";
 import { permitReadinessRequiresEvidence } from "../lib/permit-readiness-facts.js";
@@ -71,7 +73,11 @@ import { PpeIssuance } from "../models/PpeIssuance.js";
 import { CorrectiveAction } from "../models/CorrectiveAction.js";
 import { Contractor } from "../models/Contractor.js";
 import { ToolboxTalk } from "../models/ToolboxTalk.js";
-import { toPermitDetail, toPermitSummary } from "../serializers/permit.js";
+import {
+  toPermitDetail,
+  toPermitOperationalRecord,
+  toPermitSummary,
+} from "../serializers/permit.js";
 
 const router: Router = Router();
 
@@ -103,6 +109,14 @@ const PERMIT_DETAIL_POPULATE = [
       { path: "owner", select: "firstName lastName" },
     ],
   },
+];
+
+// Operational records are evidence only. The two record types share the same
+// three writable lifecycle statuses and no type-specific permission.
+const PERMIT_OPERATIONAL_RECORD_STATUSES: readonly PermitStatus[] = [
+  "APPROVED",
+  "ACTIVE",
+  "SUSPENDED",
 ];
 
 // Every permit route requires an authenticated, active IKOSH employee with at
@@ -402,7 +416,7 @@ function ensurePermitReadiness(
   return permit.readiness;
 }
 
-async function assertReadinessAttachment(
+async function assertPermitAttachment(
   session: ClientSession,
   attachmentId: string,
   permitId: Types.ObjectId,
@@ -628,13 +642,13 @@ async function assertIncomingReadinessReferences(
 
   for (const isolation of input.isolations ?? []) {
     for (const attachmentId of isolation.attachmentIds) {
-      await assertReadinessAttachment(session, attachmentId, permitId);
+      await assertPermitAttachment(session, attachmentId, permitId);
     }
   }
 
   for (const gasTest of input.gasTests ?? []) {
     for (const attachmentId of gasTest.attachmentIds) {
-      await assertReadinessAttachment(session, attachmentId, permitId);
+      await assertPermitAttachment(session, attachmentId, permitId);
     }
   }
 
@@ -751,7 +765,7 @@ async function assertIncomingReadinessReferences(
   const worksiteVerification = input.worksiteVerification ?? null;
   if (worksiteVerification) {
     for (const attachmentId of worksiteVerification.attachmentIds ?? []) {
-      await assertReadinessAttachment(session, attachmentId, permitId);
+      await assertPermitAttachment(session, attachmentId, permitId);
     }
   }
 
@@ -759,7 +773,7 @@ async function assertIncomingReadinessReferences(
     assertReadinessAttestation(attestation);
 
     for (const attachmentId of attestation.attachmentIds ?? []) {
-      await assertReadinessAttachment(session, attachmentId, permitId);
+      await assertPermitAttachment(session, attachmentId, permitId);
     }
   }
 }
@@ -998,6 +1012,164 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     permit: toPermitDetail(permit),
   });
 });
+
+// Read paginated operational evidence. Authorization is checked on the parent
+// permit before any embedded records are returned.
+router.get(
+  "/:id/operational-records",
+  async (req: Request, res: Response): Promise<void> => {
+    const viewer = getIkoshUser(req);
+    const permitId = parseObjectIdParam(req.params.id, "permit");
+    const { page, limit, skip } = parsePagination(req.query);
+
+    const permit = await Permit.findById(permitId);
+    if (!permit) {
+      throw new HttpError(404, "Permit not found.");
+    }
+
+    assertPermitAccess(viewer, permit);
+    await permit.populate({
+      path: "operationalRecords.recordedBy",
+      select: "firstName lastName",
+    });
+
+    const allRecords = [...permit.operationalRecords].sort((left, right) => {
+      const byRecordedAt =
+        right.recordedAt.getTime() - left.recordedAt.getTime();
+      return byRecordedAt || String(right._id).localeCompare(String(left._id));
+    });
+    const records = allRecords
+      .slice(skip, skip + limit)
+      .map(toPermitOperationalRecord);
+
+    res.status(200).json({
+      success: true,
+      records,
+      pagination: {
+        page,
+        limit,
+        total: allRecords.length,
+        totalPages: Math.ceil(allRecords.length / limit),
+      },
+    });
+  },
+);
+
+// Append operational evidence. Records are independent of the permit
+// lifecycle: they are accepted on approved, active and suspended permits and
+// never change status, policy, approvals or transition eligibility.
+router.post(
+  "/:id/operational-records",
+  async (req: Request, res: Response): Promise<void> => {
+    const viewer = getIkoshUser(req);
+    const permitId = parseObjectIdParam(req.params.id, "permit");
+
+    if (!canOperatePermits(viewer.ikoshRole)) {
+      throw new HttpError(
+        403,
+        "You are not permitted to record permit operational evidence.",
+      );
+    }
+
+    const parsed = permitOperationalRecordSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      throw new HttpError(400, firstValidationIssue(parsed.error));
+    }
+
+    const input = parsed.data;
+    const attachmentIds = uniqueObjectIds(input.attachmentIds);
+
+    const saved = await runAuditedMutation(
+      viewer._id,
+      async (session) => {
+        const permitDoc = await Permit.findById(permitId).session(session);
+
+        if (!permitDoc) {
+          throw new HttpError(404, "Permit not found.");
+        }
+
+        assertPermitAccess(viewer, permitDoc);
+
+        if (
+          !PERMIT_OPERATIONAL_RECORD_STATUSES.includes(
+            permitDoc.status as PermitStatus,
+          )
+        ) {
+          throw new HttpError(
+            409,
+            "Operational records can only be recorded on approved, active or suspended permits.",
+          );
+        }
+
+        for (const attachmentId of attachmentIds) {
+          await assertPermitAttachment(
+            session,
+            String(attachmentId),
+            permitDoc._id,
+          );
+        }
+
+        permitDoc.operationalRecords.push({
+          type: input.type,
+          notes: input.notes,
+          attachmentIds,
+          // Attribution is server-controlled. Clients cannot supply either
+          // the actor or the timestamp.
+          recordedBy: viewer._id,
+          recordedAt: new Date(),
+        });
+
+        const record = permitDoc.operationalRecords.at(-1);
+
+        if (!record) {
+          throw new Error("Operational record could not be appended.");
+        }
+
+        await permitDoc.save({ session });
+
+        return {
+          result: {
+            permit: permitDoc,
+            recordId: String(record._id),
+          },
+          audit: {
+            action:
+              input.type === "MONITORING_CHECK"
+                ? "permit.monitoring_check_recorded"
+                : "permit.revalidation_recorded",
+            entityType: "Permit",
+            entityId: permitDoc._id,
+            before: null,
+            after: permitOperationalRecordAuditSnapshot(record, {
+              permitId: permitDoc._id,
+              project: permitDoc.project,
+              site: permitDoc.site,
+            }),
+          },
+        };
+      },
+    );
+
+    await saved.permit.populate({
+      path: "operationalRecords.recordedBy",
+      select: "firstName lastName",
+    });
+
+    const record = saved.permit.operationalRecords.find(
+      (candidate) => String(candidate._id) === saved.recordId,
+    );
+
+    if (!record) {
+      throw new Error("Operational record could not be read after saving.");
+    }
+
+    res.status(201).json({
+      success: true,
+      record: toPermitOperationalRecord(record),
+    });
+  },
+);
 
 // Read one permit. Out-of-scope permits return 404 so existence is not leaked
 // to non-management users.

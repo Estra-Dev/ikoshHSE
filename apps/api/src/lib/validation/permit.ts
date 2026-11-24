@@ -284,6 +284,18 @@ export const permitReadinessAttestationSchema = z.object({
   attachmentIds: z.array(objectIdSchema).optional(),
 });
 
+export const permitOperationalRecordSchema = z
+  .object({
+    type: z.enum(["MONITORING_CHECK", "REVALIDATION"]),
+    notes: trimmedNonEmptyString(2000),
+    attachmentIds: z.array(objectIdSchema).max(20).optional(),
+  })
+  .strict();
+
+export type PermitOperationalRecordInput = z.infer<
+  typeof permitOperationalRecordSchema
+>;
+
 export const permitReadinessSchema = z
   .object({
     personnel: z.array(permitReadinessPersonnelSchema).optional(),

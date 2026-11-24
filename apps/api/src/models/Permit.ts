@@ -312,6 +312,46 @@ const permitReadinessWorksiteVerificationSchema = new Schema(
 );
 
 /**
+ * Permit operational records are append-only evidence and never drive status.
+ */
+const permitOperationalRecordSchema = new Schema(
+  {
+    type: {
+      type: String,
+      enum: ["MONITORING_CHECK", "REVALIDATION"],
+      required: true,
+    },
+    notes: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    attachmentIds: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "Attachment",
+        },
+      ],
+      default: [],
+    },
+    recordedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    recordedAt: {
+      type: Date,
+      required: true,
+    },
+  },
+  {
+    timestamps: false,
+    versionKey: false,
+  },
+);
+
+/**
  * Readiness attestation. This is a declaration by a named user, not proof
  * that a blocked organizational decision has been made.
  */
@@ -602,6 +642,10 @@ const permitSchema = new Schema(
     readiness: {
       type: permitReadinessSchema,
       default: null,
+    },
+    operationalRecords: {
+      type: [permitOperationalRecordSchema],
+      default: [],
     },
     createdBy: {
       type: Schema.Types.ObjectId,

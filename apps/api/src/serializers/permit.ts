@@ -55,6 +55,25 @@ export interface PermitLike {
   createdAt: Date;
   updatedAt: Date;
   readiness?: unknown;
+  operationalRecords?: readonly PermitOperationalRecordLike[];
+}
+
+export interface PermitOperationalRecordLike {
+  _id?: unknown;
+  type: "MONITORING_CHECK" | "REVALIDATION";
+  notes: string;
+  attachmentIds?: readonly unknown[];
+  recordedBy: unknown;
+  recordedAt: Date;
+}
+
+export interface SerializedPermitOperationalRecord {
+  id: string;
+  type: "MONITORING_CHECK" | "REVALIDATION";
+  notes: string;
+  attachmentIds: string[];
+  recordedBy: UserRef | null;
+  recordedAt: string;
 }
 
 export interface UserRef {
@@ -144,6 +163,19 @@ export interface SerializedPermit {
   readiness?: unknown;
   /** Sanitized A03 draft-preview evaluation; individual detail responses only. */
   readinessEvaluation?: PermitReadinessEvaluation;
+}
+
+export function toPermitOperationalRecord(
+  record: PermitOperationalRecordLike,
+): SerializedPermitOperationalRecord {
+  return {
+    id: String(record._id),
+    type: record.type,
+    notes: record.notes,
+    attachmentIds: (record.attachmentIds ?? []).map(String),
+    recordedBy: userRef(record.recordedBy),
+    recordedAt: record.recordedAt.toISOString(),
+  };
 }
 
 interface RefDocument {
