@@ -950,6 +950,252 @@ export interface UpdatePermitStatusInput {
   closureChecks?: PermitClosureChecks;
 }
 
+/* Permit readiness: A03 draft preview and DRAFT-only evidence capture.        */
+
+export const PERMIT_READINESS_EVALUATION_STATES = [
+  "AUTOMATIC",
+  "RECORDED",
+  "BLOCKED",
+  "NOT_APPLICABLE",
+  "OUTSTANDING",
+] as const;
+
+export type PermitReadinessEvaluationState =
+  (typeof PERMIT_READINESS_EVALUATION_STATES)[number];
+
+export type PermitReadinessRequirementType = "UNIVERSAL" | "CONDITIONAL";
+
+export interface PermitReadinessRequirementEvaluation {
+  id: string;
+  label: string;
+  type: PermitReadinessRequirementType;
+  state: PermitReadinessEvaluationState;
+  /** True only for AUTOMATIC or RECORDED. Never true for NOT_APPLICABLE. */
+  satisfied: boolean;
+}
+
+export interface PermitReadinessEvaluationCounts {
+  total: number;
+  satisfied: number;
+  outstanding: number;
+  blocked: number;
+  notApplicable: number;
+}
+
+/** Sanitized A03 DRAFT_PREVIEW evaluation returned only on permit detail. */
+export interface PermitReadinessEvaluation {
+  mode: "DRAFT_PREVIEW";
+  policy: {
+    version: number;
+    revision: string;
+    status: "DRAFT";
+  };
+  permitPolicyVersion: number | null;
+  counts: PermitReadinessEvaluationCounts;
+  requirements: PermitReadinessRequirementEvaluation[];
+}
+
+/**
+ * Raw readiness evidence as serialized from the permit detail document.
+ * Historical permits may have `readiness: null` and event actor references are
+ * ObjectId strings because the detail route does not populate them.
+ */
+export type PermitReadinessParticipantKind = "EMPLOYEE" | "CONTRACTOR";
+
+export interface PermitReadinessPersonnel {
+  kind?: PermitReadinessParticipantKind;
+  employee?: string | null;
+  contractorPersonnel?: string | null;
+  contractor?: string | null;
+  name?: string;
+  role?: string | null;
+  notes?: string | null;
+  attendance?: string | null;
+}
+
+export interface PermitReadinessEquipment {
+  name?: string;
+  reference?: string | null;
+  inspection?: string | null;
+  condition?: string | null;
+}
+
+export interface PermitReadinessIsolation {
+  point: string;
+  method: string;
+  tagNumber?: string | null;
+  attachmentIds: string[];
+  recordedBy: string | null;
+  recordedAt: string;
+}
+
+export interface PermitReadinessGasTest {
+  area?: string | null;
+  instrument?: string | null;
+  oxygenPct?: number | null;
+  lelPct?: number | null;
+  h2sPpm?: number | null;
+  coPpm?: number | null;
+  result?: string | null;
+  attachmentIds: string[];
+  recordedBy: string | null;
+  recordedAt: string;
+}
+
+export interface PermitReadinessLinks {
+  inspectionIds: string[];
+  ppeIssuanceIds: string[];
+  correctiveActionIds: string[];
+  contractorIds: string[];
+  toolboxTalkId: string | null;
+}
+
+export interface PermitReadinessWorksiteVerification {
+  verifiedBy: string | null;
+  verifiedAt: string | null;
+  notes: string | null;
+  attachmentIds: string[];
+}
+
+export interface PermitReadinessAttestation {
+  requirementId: string;
+  state: "SATISFIED" | "NOT_APPLICABLE";
+  note: string | null;
+  attachmentIds: string[];
+  recordedBy: string | null;
+  recordedAt: string;
+}
+
+export interface PermitReadiness {
+  personnel: PermitReadinessPersonnel[];
+  equipment: PermitReadinessEquipment[];
+  isolations: PermitReadinessIsolation[];
+  gasTests: PermitReadinessGasTest[];
+  links: PermitReadinessLinks | null;
+  worksiteVerification: PermitReadinessWorksiteVerification | null;
+  worksiteVerificationHistory: PermitReadinessWorksiteVerification[];
+  attestations: PermitReadinessAttestation[];
+}
+
+export interface PermitReadinessPersonnelInput {
+  kind: PermitReadinessParticipantKind;
+  employee?: string;
+  contractorPersonnel?: string;
+  contractor?: string;
+  name: string;
+  role?: string;
+  notes?: string;
+  attendance?: string;
+}
+
+export interface PermitReadinessEquipmentInput {
+  name: string;
+  reference?: string;
+  inspection?: string;
+  condition?: string;
+}
+
+export interface PermitReadinessIsolationInput {
+  point: string;
+  method: string;
+  tagNumber?: string;
+  attachmentIds: string[];
+}
+
+export interface PermitReadinessGasTestInput {
+  area?: string;
+  instrument?: string;
+  oxygenPct?: number;
+  lelPct?: number;
+  h2sPpm?: number;
+  coPpm?: number;
+  result?: string;
+  attachmentIds: string[];
+}
+
+export interface PermitReadinessLinksInput {
+  inspectionIds?: string[];
+  ppeIssuanceIds?: string[];
+  correctiveActionIds?: string[];
+  contractorIds?: string[];
+  toolboxTalkId?: string | null;
+}
+
+export interface PermitReadinessWorksiteVerificationInput {
+  notes?: string;
+  attachmentIds?: string[];
+}
+
+export interface PermitReadinessAttestationInput {
+  requirementId: string;
+  state: "SATISFIED" | "NOT_APPLICABLE";
+  note?: string;
+  attachmentIds?: string[];
+}
+
+export interface UpdatePermitReadinessInput {
+  personnel?: PermitReadinessPersonnelInput[];
+  equipment?: PermitReadinessEquipmentInput[];
+  isolations?: PermitReadinessIsolationInput[];
+  gasTests?: PermitReadinessGasTestInput[];
+  links?: PermitReadinessLinksInput;
+  worksiteVerification?: PermitReadinessWorksiteVerificationInput | null;
+  attestations?: PermitReadinessAttestationInput[];
+}
+
+/** Permit detail adds readiness evidence and its sanitized preview. */
+export interface PermitDetail extends PermitSummary {
+  readiness: PermitReadiness | null;
+  readinessEvaluation?: PermitReadinessEvaluation;
+}
+
+export interface PermitDetailResponse {
+  success: boolean;
+  permit: PermitDetail;
+}
+
+/* Append-only permit operational records.                                    */
+
+export const PERMIT_OPERATIONAL_RECORD_TYPES = [
+  "MONITORING_CHECK",
+  "REVALIDATION",
+] as const;
+
+export type PermitOperationalRecordType =
+  (typeof PERMIT_OPERATIONAL_RECORD_TYPES)[number];
+
+export interface PermitOperationalUserRef {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+export interface PermitOperationalRecord {
+  id: string;
+  type: PermitOperationalRecordType;
+  notes: string;
+  attachmentIds: string[];
+  recordedBy: PermitOperationalUserRef | null;
+  recordedAt: string;
+}
+
+export interface CreatePermitOperationalRecordInput {
+  type: PermitOperationalRecordType;
+  notes: string;
+  attachmentIds?: string[];
+}
+
+export interface PermitOperationalRecordResponse {
+  success: boolean;
+  record: PermitOperationalRecord;
+}
+
+export interface PermitOperationalRecordsResponse {
+  success: boolean;
+  records: PermitOperationalRecord[];
+  pagination: ApiPagination;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Risk assessments                                                           */
 /* -------------------------------------------------------------------------- */

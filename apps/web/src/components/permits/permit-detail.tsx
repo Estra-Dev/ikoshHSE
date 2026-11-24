@@ -34,6 +34,8 @@ import {
   PermitWorkTypeBadge,
 } from "./permit-badges";
 import { PermitForm } from "./permit-form";
+import { PermitOperationalRecords } from "./permit-operational-records";
+import { PermitReadinessPanel } from "./permit-readiness-panel";
 import { PermitStatusPanel } from "./permit-status-panel";
 
 function personName(person: { firstName: string; lastName: string }): string {
@@ -525,6 +527,18 @@ export function PermitDetail({ permitId }: { permitId: string }) {
               )}
             </CardBody>
           </Card>
+
+          <PermitOperationalRecords
+            permitId={permit.id}
+            permitStatus={permit.status}
+            role={role}
+          />
+
+          <PermitReadinessPanel
+            permit={permit}
+            role={role}
+            viewerId={viewerId}
+          />
 
           <AttachmentsPanel
             key={permit.id}

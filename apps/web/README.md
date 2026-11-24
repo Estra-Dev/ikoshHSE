@@ -42,3 +42,25 @@ the frontend.
 Client-side helpers in `src/lib/permissions.ts` only control visible
 affordances. The API re-checks every action against the MongoDB employee
 record and site assignments.
+
+## Permit detail (M7.4)
+
+The permit detail screen includes two informational sections:
+
+- **Readiness — A03 draft preview.** The API evaluates the A03 candidate as a
+  `DRAFT_PREVIEW`. The notice “A03 DRAFT PREVIEW — informational only; it does
+  not approve, activate, resume, or block a permit.” is shown verbatim, and the
+  preview never gates workflow actions. The canonical 14-item decision register
+  is not supplied, so that panel remains blocked. Evidence capture is available
+  only while the permit is `DRAFT` and only to the creator, responsible person
+  or HSE management.
+- **Operational records.** Monitoring checks and revalidations are append-only
+  evidence. New records can be added only on `APPROVED`, `ACTIVE` or
+  `SUSPENDED` permits by permitted operators; history stays readable in every
+  status. The client sends only the record type, notes and optional attachment
+  IDs. The server stamps the actor and timestamp and remains authoritative for
+  scope, status and attachments.
+
+All writes invalidate the relevant queries so the server response refreshes the
+preview and timeline. No readiness or operational-record state changes the
+existing submit, approve, activate, suspend, resume, cancel or close actions.
