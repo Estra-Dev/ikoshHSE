@@ -57,9 +57,7 @@ export function canManageDepartments(role: IkoshRole | undefined): boolean {
 }
 
 /** Inactive employees can only be listed by management roles. */
-export function canListInactiveEmployees(
-  role: IkoshRole | undefined,
-): boolean {
+export function canListInactiveEmployees(role: IkoshRole | undefined): boolean {
   return isManagementRole(role);
 }
 
@@ -72,9 +70,7 @@ export function canReportIncidents(role: IkoshRole | undefined): boolean {
  * Site access administration is restricted to HSE managers and
  * administrators. The API enforces the same rule.
  */
-export function canManagePersonnelAccess(
-  role: IkoshRole | undefined,
-): boolean {
+export function canManagePersonnelAccess(role: IkoshRole | undefined): boolean {
   return isHseManagementRole(role);
 }
 
@@ -148,9 +144,7 @@ export function canViewCorrectiveActions(role: IkoshRole | undefined): boolean {
 export function canCreateCorrectiveActions(
   role: IkoshRole | undefined,
 ): boolean {
-  return (
-    role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN"
-  );
+  return role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN";
 }
 
 export function canProgressCorrectiveActions(
@@ -246,9 +240,7 @@ export function canViewInspections(role: IkoshRole | undefined): boolean {
 }
 
 export function canCreateInspections(role: IkoshRole | undefined): boolean {
-  return (
-    role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN"
-  );
+  return role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN";
 }
 
 export function canConductInspections(role: IkoshRole | undefined): boolean {
@@ -359,9 +351,7 @@ export function canUploadInspectionEvidence(
 function isInspectionStatusTerminal(
   inspection: Pick<EditableInspection, "status">,
 ): boolean {
-  return (
-    inspection.status === "COMPLETED" || inspection.status === "CANCELLED"
-  );
+  return inspection.status === "COMPLETED" || inspection.status === "CANCELLED";
 }
 
 /* -------------------------------------------------------------------------- */
@@ -379,9 +369,7 @@ export function canViewRiskAssessments(role: IkoshRole | undefined): boolean {
 }
 
 export function canCreateRiskAssessments(role: IkoshRole | undefined): boolean {
-  return (
-    role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN"
-  );
+  return role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN";
 }
 
 export function canEditRiskAssessments(role: IkoshRole | undefined): boolean {
@@ -453,10 +441,7 @@ export function canUploadRiskAssessmentEvidence(
   viewerId: string | undefined,
   assessment: Pick<EditableRiskAssessment, "status" | "owner" | "createdBy">,
 ): boolean {
-  if (
-    !canViewRiskAssessments(role) ||
-    assessment.status === "ARCHIVED"
-  ) {
+  if (!canViewRiskAssessments(role) || assessment.status === "ARCHIVED") {
     return false;
   }
 
@@ -483,9 +468,7 @@ export function canViewAudits(role: IkoshRole | undefined): boolean {
 }
 
 export function canCreateAudits(role: IkoshRole | undefined): boolean {
-  return (
-    role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN"
-  );
+  return role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN";
 }
 
 export function canConductAudits(role: IkoshRole | undefined): boolean {
@@ -658,18 +641,14 @@ function isPermitCreatorOrResponsible(
 export function canEditPermit(
   role: IkoshRole | undefined,
   viewerId: string | undefined,
-  permit: Pick<
-    EditablePermit,
-    "status" | "responsiblePerson" | "createdBy"
-  >,
+  permit: Pick<EditablePermit, "status" | "responsiblePerson" | "createdBy">,
 ): boolean {
   if (!canCreatePermits(role) || permit.status !== "DRAFT") {
     return false;
   }
 
   return (
-    canManagePermits(role) ||
-    isPermitCreatorOrResponsible(viewerId, permit)
+    canManagePermits(role) || isPermitCreatorOrResponsible(viewerId, permit)
   );
 }
 
@@ -677,10 +656,7 @@ export function canEditPermit(
 export function canSubmitPermit(
   role: IkoshRole | undefined,
   viewerId: string | undefined,
-  permit: Pick<
-    EditablePermit,
-    "status" | "responsiblePerson" | "createdBy"
-  >,
+  permit: Pick<EditablePermit, "status" | "responsiblePerson" | "createdBy">,
 ): boolean {
   return canEditPermit(role, viewerId, permit);
 }
@@ -786,10 +762,7 @@ export function canClosePermit(
 export function canCancelPermit(
   role: IkoshRole | undefined,
   viewerId: string | undefined,
-  permit: Pick<
-    EditablePermit,
-    "status" | "responsiblePerson" | "createdBy"
-  >,
+  permit: Pick<EditablePermit, "status" | "responsiblePerson" | "createdBy">,
 ): boolean {
   if (canManagePermits(role)) {
     return (
@@ -817,10 +790,7 @@ export function canCancelPermit(
 export function canUploadPermitEvidence(
   role: IkoshRole | undefined,
   viewerId: string | undefined,
-  permit: Pick<
-    EditablePermit,
-    "status" | "responsiblePerson" | "createdBy"
-  >,
+  permit: Pick<EditablePermit, "status" | "responsiblePerson" | "createdBy">,
 ): boolean {
   if (!canViewPermits(role)) {
     return false;
@@ -854,9 +824,7 @@ export function canViewTraining(role: IkoshRole | undefined): boolean {
 }
 
 export function canCreateTraining(role: IkoshRole | undefined): boolean {
-  return (
-    role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN"
-  );
+  return role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN";
 }
 
 export function canManageTraining(role: IkoshRole | undefined): boolean {
@@ -1028,12 +996,102 @@ export function canIssuePpe(role: IkoshRole | undefined): boolean {
 
 /** Create and adjust stock; HSE officers and above. */
 export function canManagePpeStock(role: IkoshRole | undefined): boolean {
-  return (
-    role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN"
-  );
+  return role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN";
 }
 
 /** Manage the catalogue; HSE managers and administrators only. */
 export function canManagePpeCatalogue(role: IkoshRole | undefined): boolean {
   return isHseManagementRole(role);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Management of Change                                                       */
+/* -------------------------------------------------------------------------- */
+
+/** Supervisors and above may view the MOC register. */
+export function canViewManagementOfChange(
+  role: IkoshRole | undefined,
+): boolean {
+  return isManagementRole(role);
+}
+
+/** HSE officers and above may create changes. */
+export function canCreateManagementOfChange(
+  role: IkoshRole | undefined,
+): boolean {
+  return role === "HSE_OFFICER" || role === "HSE_MANAGER" || role === "ADMIN";
+}
+
+/** HSE officers and above may complete impact assessments. */
+export function canAssessManagementOfChange(
+  role: IkoshRole | undefined,
+): boolean {
+  return canCreateManagementOfChange(role);
+}
+
+/** Full management functions are reserved for HSE managers and admins. */
+export function canManageManagementOfChange(
+  role: IkoshRole | undefined,
+): boolean {
+  return isHseManagementRole(role);
+}
+
+/** Technical/HSE approval is reserved for HSE managers. */
+export function canApproveManagementOfChangeTechnical(
+  role: IkoshRole | undefined,
+): boolean {
+  return role === "HSE_MANAGER";
+}
+
+/** Management approval is reserved for administrators. */
+export function canApproveManagementOfChangeManagement(
+  role: IkoshRole | undefined,
+): boolean {
+  return role === "ADMIN";
+}
+
+/** Implementation planning mirrors the assessment authoring roles. */
+export function canImplementManagementOfChange(
+  role: IkoshRole | undefined,
+): boolean {
+  return canCreateManagementOfChange(role);
+}
+
+/** Verification mirrors the assessment authoring roles. */
+export function canVerifyManagementOfChange(
+  role: IkoshRole | undefined,
+): boolean {
+  return canCreateManagementOfChange(role);
+}
+
+/**
+ * Submission is a management action. The API's A03 activation policy remains
+ * the authoritative gate, so callers must also check the server policy flags.
+ */
+export function canSubmitManagementOfChange(
+  role: IkoshRole | undefined,
+): boolean {
+  return isHseManagementRole(role);
+}
+
+/** Assessments are editable only in DRAFT or ASSESSMENT. */
+export function canEditManagementOfChangeAssessment(
+  role: IkoshRole | undefined,
+  status: ManagementOfChangeStatusLike,
+): boolean {
+  return (
+    canAssessManagementOfChange(role) &&
+    (status === "DRAFT" || status === "ASSESSMENT")
+  );
+}
+
+type ManagementOfChangeStatusLike =
+  | "DRAFT"
+  | "ASSESSMENT"
+  | "PENDING_APPROVAL"
+  | "APPROVED"
+  | "IMPLEMENTING"
+  | "VERIFICATION"
+  | "CLOSED"
+  | "REJECTED"
+  | "CANCELLED";

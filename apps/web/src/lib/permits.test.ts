@@ -15,7 +15,9 @@ import {
   nextPermitStatuses,
   parsePermitFilters,
   parseWorkersInvolved,
+  permitAttentionFilters,
   permitDetailHref,
+  PERMIT_ATTENTION_WINDOW_DAYS,
   PERMIT_CLOSURE_CHECK_LABELS,
   PERMIT_PAGE_SIZE,
   toggleLinkedRiskAssessment,
@@ -43,6 +45,7 @@ describe("permit filters", () => {
       new URLSearchParams({
         q: "tank",
         status: "ACTIVE",
+        attention: "",
         workType: "HOT_WORK",
         siteId: "507f1f77bcf86cd799439011",
         responsiblePersonId: "507f1f77bcf86cd799439012",
@@ -54,6 +57,7 @@ describe("permit filters", () => {
     expect(filters).toEqual({
       q: "tank",
       status: "ACTIVE",
+      attention: "",
       workType: "HOT_WORK",
       siteId: "507f1f77bcf86cd799439011",
       responsiblePersonId: "507f1f77bcf86cd799439012",
@@ -61,9 +65,9 @@ describe("permit filters", () => {
       limit: 50,
     });
 
-    expect(
-      buildPermitFilterSearchParams(EMPTY_PERMIT_FILTERS).toString(),
-    ).toBe("");
+    expect(buildPermitFilterSearchParams(EMPTY_PERMIT_FILTERS).toString()).toBe(
+      "",
+    );
   });
 
   it("truncates oversized search text", () => {
@@ -76,9 +80,9 @@ describe("permit filters", () => {
 
   it("detects whether any filter is active apart from paging", () => {
     expect(hasActivePermitFilters(EMPTY_PERMIT_FILTERS)).toBe(false);
-    expect(
-      hasActivePermitFilters({ ...EMPTY_PERMIT_FILTERS, page: 4 }),
-    ).toBe(false);
+    expect(hasActivePermitFilters({ ...EMPTY_PERMIT_FILTERS, page: 4 })).toBe(
+      false,
+    );
 
     expect(
       hasActivePermitFilters({ ...EMPTY_PERMIT_FILTERS, status: "ACTIVE" }),
@@ -86,9 +90,9 @@ describe("permit filters", () => {
     expect(
       hasActivePermitFilters({ ...EMPTY_PERMIT_FILTERS, workType: "HOT_WORK" }),
     ).toBe(true);
-    expect(
-      hasActivePermitFilters({ ...EMPTY_PERMIT_FILTERS, q: "tank" }),
-    ).toBe(true);
+    expect(hasActivePermitFilters({ ...EMPTY_PERMIT_FILTERS, q: "tank" })).toBe(
+      true,
+    );
     expect(
       hasActivePermitFilters({
         ...EMPTY_PERMIT_FILTERS,
@@ -107,6 +111,7 @@ describe("permit filters", () => {
     const params = buildPermitFilterSearchParams({
       q: "tank",
       status: "SUSPENDED",
+      attention: "",
       workType: "CONFINED_SPACE_ENTRY",
       siteId: "507f1f77bcf86cd799439011",
       responsiblePersonId: "507f1f77bcf86cd799439012",
@@ -185,15 +190,15 @@ describe("permit validity", () => {
 
   it("treats validity as an inclusive window", () => {
     expect(isWithinPermitValidity(window, now)).toBe(true);
-    expect(
-      isWithinPermitValidity(window, Date.parse(window.validFrom)),
-    ).toBe(true);
+    expect(isWithinPermitValidity(window, Date.parse(window.validFrom))).toBe(
+      true,
+    );
     expect(isWithinPermitValidity(window, Date.parse(window.validTo))).toBe(
       true,
     );
-    expect(
-      isWithinPermitValidity(window, Date.parse(window.validTo) + 1),
-    ).toBe(false);
+    expect(isWithinPermitValidity(window, Date.parse(window.validTo) + 1)).toBe(
+      false,
+    );
     expect(
       isWithinPermitValidity(window, Date.parse(window.validFrom) - 1),
     ).toBe(false);
@@ -242,41 +247,24 @@ describe("permit validity", () => {
         now,
       ),
     ).toBe(true);
-    expect(isPermitExpired({ status: "ACTIVE", validTo: window.validTo }, now))
-      .toBe(false);
     expect(
-      isPermitExpired(
-        { status: "ACTIVE", validTo: "not-a-date" },
-        now,
-      ),
+      isPermitExpired({ status: "ACTIVE", validTo: window.validTo }, now),
+    ).toBe(false);
+    expect(
+      isPermitExpired({ status: "ACTIVE", validTo: "not-a-date" }, now),
     ).toBe(false);
   });
 
   it("only offers activation inside the validity window", () => {
-    expect(
-      canUsePermitNow(
-        { status: "APPROVED", ...window },
-        now,
-      ),
-    ).toBe(true);
-    expect(
-      canUsePermitNow(
-        { status: "SUSPENDED", ...window },
-        now,
-      ),
-    ).toBe(true);
+    expect(canUsePermitNow({ status: "APPROVED", ...window }, now)).toBe(true);
+    expect(canUsePermitNow({ status: "SUSPENDED", ...window }, now)).toBe(true);
     expect(
       canUsePermitNow(
         { status: "APPROVED", ...window },
         Date.parse(window.validTo) + 1,
       ),
     ).toBe(false);
-    expect(
-      canUsePermitNow(
-        { status: "DRAFT", ...window },
-        now,
-      ),
-    ).toBe(false);
+    expect(canUsePermitNow({ status: "DRAFT", ...window }, now)).toBe(false);
   });
 });
 
@@ -316,7 +304,10 @@ describe("permit risk assessment links", () => {
 
   function assessment(
     overrides: Partial<
-      Pick<RiskAssessmentSummary, "status" | "supersededBy" | "project" | "site">
+      Pick<
+        RiskAssessmentSummary,
+        "status" | "supersededBy" | "project" | "site"
+      >
     > = {},
   ): Pick<
     RiskAssessmentSummary,
@@ -386,19 +377,23 @@ describe("permit risk assessment links", () => {
       ),
     ).toBe(false);
 
-    expect(
-      isRiskAssessmentEligibleForPermit(assessment(), "", siteId),
-    ).toBe(false);
-    expect(
-      isRiskAssessmentEligibleForPermit(assessment(), projectId, ""),
-    ).toBe(false);
+    expect(isRiskAssessmentEligibleForPermit(assessment(), "", siteId)).toBe(
+      false,
+    );
+    expect(isRiskAssessmentEligibleForPermit(assessment(), projectId, "")).toBe(
+      false,
+    );
   });
 
   it("toggles links without duplicates", () => {
     expect(toggleLinkedRiskAssessment([], "a")).toEqual(["a"]);
     expect(toggleLinkedRiskAssessment(["a"], "b")).toEqual(["a", "b"]);
     expect(toggleLinkedRiskAssessment(["a", "b"], "a")).toEqual(["b"]);
-    expect(toggleLinkedRiskAssessment(["a", "b"], "c")).toEqual(["a", "b", "c"]);
+    expect(toggleLinkedRiskAssessment(["a", "b"], "c")).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
   });
 
   it("enforces the 10-link limit but still allows removals", () => {
@@ -410,5 +405,99 @@ describe("permit risk assessment links", () => {
     expect(MAX_LINKED_RISK_ASSESSMENTS).toBe(10);
     expect(toggleLinkedRiskAssessment(ids, "one-too-many")).toEqual(ids);
     expect(toggleLinkedRiskAssessment(ids, ids[0])).toEqual(ids.slice(1));
+  });
+});
+
+describe("permit attention filters", () => {
+  it("parses the expiring-soon attention filter and implies ACTIVE", () => {
+    const filters = parsePermitFilters(
+      new URLSearchParams({ attention: "ACTIVE_EXPIRING_SOON" }),
+    );
+
+    expect(filters.attention).toBe("ACTIVE_EXPIRING_SOON");
+    expect(filters.status).toBe("ACTIVE");
+  });
+
+  it("ignores unknown attention values", () => {
+    expect(
+      parsePermitFilters(new URLSearchParams({ attention: "EXPIRED" }))
+        .attention,
+    ).toBe("");
+    expect(
+      parsePermitFilters(new URLSearchParams({ attention: "active" }))
+        .attention,
+    ).toBe("");
+  });
+
+  it("drops attention when the status conflicts", () => {
+    const filters = parsePermitFilters(
+      new URLSearchParams({
+        attention: "ACTIVE_EXPIRING_SOON",
+        status: "SUSPENDED",
+      }),
+    );
+
+    expect(filters.attention).toBe("");
+    expect(filters.status).toBe("SUSPENDED");
+  });
+
+  it("round-trips the attention filter through the URL", () => {
+    const params = buildPermitFilterSearchParams({
+      ...EMPTY_PERMIT_FILTERS,
+      status: "ACTIVE",
+      attention: "ACTIVE_EXPIRING_SOON",
+    });
+
+    expect(params.get("attention")).toBe("ACTIVE_EXPIRING_SOON");
+    expect(parsePermitFilters(params)).toMatchObject({
+      status: "ACTIVE",
+      attention: "ACTIVE_EXPIRING_SOON",
+    });
+  });
+
+  it("counts attention as an active filter", () => {
+    expect(
+      hasActivePermitFilters({
+        ...EMPTY_PERMIT_FILTERS,
+        attention: "ACTIVE_EXPIRING_SOON",
+      }),
+    ).toBe(true);
+  });
+
+  it("builds attention clicks that preserve site scope and reset paging", () => {
+    const filters = {
+      ...EMPTY_PERMIT_FILTERS,
+      q: "tank",
+      workType: "HOT_WORK" as const,
+      responsiblePersonId: "507f1f77bcf86cd799439011",
+      siteId: "507f1f77bcf86cd799439012",
+      page: 4,
+      limit: 50,
+    };
+
+    expect(permitAttentionFilters(filters, "SUSPENDED")).toEqual({
+      q: "",
+      workType: "",
+      responsiblePersonId: "",
+      status: "SUSPENDED",
+      attention: "",
+      siteId: filters.siteId,
+      page: 1,
+      limit: 50,
+    });
+
+    expect(permitAttentionFilters(filters, "SUBMITTED")).toMatchObject({
+      status: "SUBMITTED",
+      attention: "",
+    });
+
+    expect(
+      permitAttentionFilters(filters, "ACTIVE_EXPIRING_SOON"),
+    ).toMatchObject({
+      status: "ACTIVE",
+      attention: "ACTIVE_EXPIRING_SOON",
+    });
+
+    expect(PERMIT_ATTENTION_WINDOW_DAYS).toBe(7);
   });
 });

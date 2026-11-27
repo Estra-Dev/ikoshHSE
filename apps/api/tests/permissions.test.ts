@@ -30,6 +30,7 @@ const EXPECTED: Record<IkoshRole, readonly HseCapability[]> = {
     "viewReports",
     "viewPpe",
     "issuePpe",
+    "viewManagementOfChange",
   ],
   HSE_OFFICER: [
     "reportIncident",
@@ -56,6 +57,11 @@ const EXPECTED: Record<IkoshRole, readonly HseCapability[]> = {
     "viewPpe",
     "issuePpe",
     "managePpeStock",
+    "viewManagementOfChange",
+    "createManagementOfChange",
+    "assessManagementOfChange",
+    "implementManagementOfChange",
+    "verifyManagementOfChange",
   ],
   HSE_MANAGER: [
     "reportIncident",
@@ -96,8 +102,17 @@ const EXPECTED: Record<IkoshRole, readonly HseCapability[]> = {
     "issuePpe",
     "managePpeStock",
     "managePpeCatalogue",
+    "viewManagementOfChange",
+    "createManagementOfChange",
+    "manageManagementOfChange",
+    "assessManagementOfChange",
+    "approveManagementOfChangeTechnical",
+    "implementManagementOfChange",
+    "verifyManagementOfChange",
   ],
-  ADMIN: HSE_CAPABILITIES,
+  ADMIN: HSE_CAPABILITIES.filter(
+    (capability) => capability !== "approveManagementOfChangeTechnical",
+  ),
 };
 
 describe("HSE role matrix", () => {

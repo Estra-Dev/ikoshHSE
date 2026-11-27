@@ -117,6 +117,13 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         icon: "permit",
         roles: ["SUPERVISOR", "HSE_OFFICER", "HSE_MANAGER", "ADMIN"],
       },
+      {
+        kind: "link",
+        href: "/management-of-change",
+        label: "Management of Change",
+        icon: "risk",
+        roles: ["SUPERVISOR", "HSE_OFFICER", "HSE_MANAGER", "ADMIN"],
+      },
     ],
   },
   {
@@ -232,9 +239,7 @@ export function isNavItemVisible(
 }
 
 /** Sections filtered for the viewer, dropping empty sections. */
-export function visibleNavSections(
-  role: IkoshRole | undefined,
-): NavSection[] {
+export function visibleNavSections(role: IkoshRole | undefined): NavSection[] {
   return NAV_SECTIONS.map((section) => ({
     label: section.label,
     items: section.items.filter((item) => isNavItemVisible(item, role)),

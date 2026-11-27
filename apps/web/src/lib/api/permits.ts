@@ -27,8 +27,7 @@ export const PERMIT_OPERATIONAL_RECORDS_PAGE_SIZE = 10;
 export const permitKeys = {
   all: ["permits"] as const,
   listRoot: ["permits", "list"] as const,
-  list: (query: PermitFilterState) =>
-    [...permitKeys.listRoot, query] as const,
+  list: (query: PermitFilterState) => [...permitKeys.listRoot, query] as const,
   detailRoot: ["permits", "detail"] as const,
   detail: (id: string) => [...permitKeys.detailRoot, id] as const,
   recordsRoot: (id: string) =>
@@ -40,7 +39,9 @@ export const permitKeys = {
 };
 
 /** Builds the register query; empty filters are omitted. */
-function buildListSearchParams(query: PermitFilterState): URLSearchParams {
+export function buildListSearchParams(
+  query: PermitFilterState,
+): URLSearchParams {
   const searchParams = new URLSearchParams();
 
   if (query.q) searchParams.set("q", query.q);
@@ -50,6 +51,7 @@ function buildListSearchParams(query: PermitFilterState): URLSearchParams {
   if (query.responsiblePersonId) {
     searchParams.set("responsiblePersonId", query.responsiblePersonId);
   }
+  if (query.attention) searchParams.set("attention", query.attention);
   searchParams.set("page", String(query.page));
   searchParams.set("limit", String(query.limit));
 
@@ -91,10 +93,7 @@ export function usePermitOperationalRecords(id: string, page = 1) {
     queryFn: () => {
       const searchParams = new URLSearchParams();
       searchParams.set("page", String(page));
-      searchParams.set(
-        "limit",
-        String(PERMIT_OPERATIONAL_RECORDS_PAGE_SIZE),
-      );
+      searchParams.set("limit", String(PERMIT_OPERATIONAL_RECORDS_PAGE_SIZE));
 
       return api.get<PermitOperationalRecordsResponse>(
         `/api/permits/${id}/operational-records`,

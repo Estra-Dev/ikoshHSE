@@ -47,6 +47,14 @@ export const HSE_CAPABILITIES = [
   "managePpeCatalogue",
   "manageEmployees",
   "manageDepartments",
+  "viewManagementOfChange",
+  "createManagementOfChange",
+  "manageManagementOfChange",
+  "assessManagementOfChange",
+  "approveManagementOfChangeTechnical",
+  "approveManagementOfChangeManagement",
+  "implementManagementOfChange",
+  "verifyManagementOfChange",
 ] as const;
 
 export type HseCapability = (typeof HSE_CAPABILITIES)[number];
@@ -68,6 +76,7 @@ const ROLE_MATRIX: Record<IkoshRole, readonly HseCapability[]> = {
     "viewReports",
     "viewPpe",
     "issuePpe",
+    "viewManagementOfChange",
   ],
   HSE_OFFICER: [
     "reportIncident",
@@ -94,6 +103,11 @@ const ROLE_MATRIX: Record<IkoshRole, readonly HseCapability[]> = {
     "viewPpe",
     "issuePpe",
     "managePpeStock",
+    "viewManagementOfChange",
+    "createManagementOfChange",
+    "assessManagementOfChange",
+    "implementManagementOfChange",
+    "verifyManagementOfChange",
   ],
   HSE_MANAGER: [
     "reportIncident",
@@ -134,8 +148,17 @@ const ROLE_MATRIX: Record<IkoshRole, readonly HseCapability[]> = {
     "issuePpe",
     "managePpeStock",
     "managePpeCatalogue",
+    "viewManagementOfChange",
+    "createManagementOfChange",
+    "manageManagementOfChange",
+    "assessManagementOfChange",
+    "approveManagementOfChangeTechnical",
+    "implementManagementOfChange",
+    "verifyManagementOfChange",
   ],
-  ADMIN: HSE_CAPABILITIES,
+  ADMIN: HSE_CAPABILITIES.filter(
+    (capability) => capability !== "approveManagementOfChangeTechnical",
+  ),
 };
 
 /** Returns false for unknown roles so callers fail closed. */
@@ -319,4 +342,38 @@ export function canManageEmployees(role: string): boolean {
 
 export function canManageDepartments(role: string): boolean {
   return hasHsePermission(role, "manageDepartments");
+}
+
+export function canViewManagementOfChange(role: string): boolean {
+  return hasHsePermission(role, "viewManagementOfChange");
+}
+
+export function canCreateManagementOfChange(role: string): boolean {
+  return hasHsePermission(role, "createManagementOfChange");
+}
+
+export function canManageManagementOfChange(role: string): boolean {
+  return hasHsePermission(role, "manageManagementOfChange");
+}
+
+export function canAssessManagementOfChange(role: string): boolean {
+  return hasHsePermission(role, "assessManagementOfChange");
+}
+
+/** Technical/HSE approval is reserved for HSE managers. */
+export function canApproveManagementOfChangeTechnical(role: string): boolean {
+  return hasHsePermission(role, "approveManagementOfChangeTechnical");
+}
+
+/** Management approval is reserved for administrators. */
+export function canApproveManagementOfChangeManagement(role: string): boolean {
+  return hasHsePermission(role, "approveManagementOfChangeManagement");
+}
+
+export function canImplementManagementOfChange(role: string): boolean {
+  return hasHsePermission(role, "implementManagementOfChange");
+}
+
+export function canVerifyManagementOfChange(role: string): boolean {
+  return hasHsePermission(role, "verifyManagementOfChange");
 }

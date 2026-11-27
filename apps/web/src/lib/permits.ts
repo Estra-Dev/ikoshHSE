@@ -19,6 +19,13 @@ export const PERMIT_PAGE_SIZE = 20;
 export const MAX_PERMIT_PAGE_SIZE = 100;
 export const MAX_PERMIT_SEARCH_LENGTH = 200;
 export const MAX_LINKED_RISK_ASSESSMENTS = 10;
+export const PERMIT_ATTENTION_WINDOW_DAYS = 7;
+
+export type PermitAttentionFilter = "ACTIVE_EXPIRING_SOON" | "";
+export type PermitAttentionKind =
+  | "SUSPENDED"
+  | "SUBMITTED"
+  | "ACTIVE_EXPIRING_SOON";
 
 export interface PermitFilterState {
   q: string;
@@ -28,6 +35,7 @@ export interface PermitFilterState {
   responsiblePersonId: string;
   page: number;
   limit: number;
+  attention: PermitAttentionFilter;
 }
 
 export const EMPTY_PERMIT_FILTERS: PermitFilterState = {
@@ -36,6 +44,7 @@ export const EMPTY_PERMIT_FILTERS: PermitFilterState = {
   workType: "",
   siteId: "",
   responsiblePersonId: "",
+  attention: "",
   page: 1,
   limit: PERMIT_PAGE_SIZE,
 };
@@ -88,10 +97,7 @@ export function isWithinPermitValidity(
   const to = new Date(permit.validTo).getTime();
 
   return (
-    Number.isFinite(from) &&
-    Number.isFinite(to) &&
-    now >= from &&
-    now <= to
+    Number.isFinite(from) && Number.isFinite(to) && now >= from && now <= to
   );
 }
 
@@ -161,9 +167,20 @@ export function parsePermitFilters(
     10,
   );
 
+  const rawAttention = searchParams.get("attention");
+
+  const requestedAttention: PermitAttentionFilter =
+    rawAttention === "ACTIVE_EXPIRING_SOON" ? "ACTIVE_EXPIRING_SOON" : "";
+
+  const attention =
+    requestedAttention && (!rawStatus || rawStatus === "ACTIVE")
+      ? requestedAttention
+      : "";
+
   return {
     q: rawQuery.slice(0, MAX_PERMIT_SEARCH_LENGTH),
-    status: isPermitStatus(rawStatus) ? rawStatus : "",
+    status: attention ? "ACTIVE" : isPermitStatus(rawStatus) ? rawStatus : "",
+    attention,
     workType: isPermitWorkType(rawWorkType) ? rawWorkType : "",
     siteId: objectIdOrEmpty(searchParams.get("siteId")),
     responsiblePersonId: objectIdOrEmpty(
@@ -171,9 +188,7 @@ export function parsePermitFilters(
     ),
     page: Number.isFinite(page) && page >= 1 ? page : 1,
     limit:
-      Number.isFinite(limit) &&
-      limit >= 1 &&
-      limit <= MAX_PERMIT_PAGE_SIZE
+      Number.isFinite(limit) && limit >= 1 && limit <= MAX_PERMIT_PAGE_SIZE
         ? limit
         : PERMIT_PAGE_SIZE,
   };
@@ -197,6 +212,10 @@ export function buildPermitFilterSearchParams(
     searchParams.set("limit", String(filters.limit));
   }
 
+  if (filters.attention) {
+    searchParams.set("attention", filters.attention);
+  }
+
   return searchParams;
 }
 
@@ -204,11 +223,31 @@ export function buildPermitFilterSearchParams(
 export function hasActivePermitFilters(filters: PermitFilterState): boolean {
   return Boolean(
     filters.q ||
-      filters.status ||
-      filters.workType ||
-      filters.siteId ||
-      filters.responsiblePersonId,
+    filters.status ||
+    filters.attention ||
+    filters.workType ||
+    filters.siteId ||
+    filters.responsiblePersonId,
   );
+}
+
+/**
+ * Builds register filters for a manager attention category.
+ * Preserves site scope and page size while clearing unrelated filters.
+ */
+export function permitAttentionFilters(
+  filters: PermitFilterState,
+  kind: PermitAttentionKind,
+): PermitFilterState {
+  return {
+    ...filters,
+    q: "",
+    workType: "",
+    responsiblePersonId: "",
+    status: kind === "ACTIVE_EXPIRING_SOON" ? "ACTIVE" : kind,
+    attention: kind === "ACTIVE_EXPIRING_SOON" ? "ACTIVE_EXPIRING_SOON" : "",
+    page: 1,
+  };
 }
 
 /**

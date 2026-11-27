@@ -1,19 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendSiteFilter,
   buildDashboardSearchParams,
   buildIncidentListSearchParams,
   buildProjectListSearchParams,
+  buildReportFilters,
   buildSiteListSearchParams,
   canScopeRecentReports,
+  chartSeries,
   deriveDashboardKpis,
+  deriveReportKpis,
   MAX_COMPARISON_SITES,
+  nonZeroSeries,
   selectComparisonSites,
+  seriesTotal,
   summariseTrend,
   topCategoryCounts,
   type DashboardScopeFilters,
 } from "./hse-dashboard";
 import type {
   HseDashboard,
+  HseReport,
   HseTrendPoint,
   SiteSummary,
 } from "./api/types";
@@ -56,6 +63,88 @@ function dashboardFixture(overrides: Partial<HseDashboard> = {}): HseDashboard {
   };
 }
 
+function reportFixture(overrides: Partial<HseReport> = {}): HseReport {
+  return {
+    scope: { projectId: null, siteId: null, from: null, to: null },
+    generatedAt: NOW.toISOString(),
+    incidents: {
+      total: 12,
+      incidents: 9,
+      nearMisses: 3,
+      byStatus: { REPORTED: 2, TRIAGED: 4, CLOSED: 6 },
+      byCategory: [{ category: "LOST_TIME_INJURY", count: 3 }],
+      unclassified: 1,
+    },
+    inspections: {
+      total: 8,
+      byStatus: { SCHEDULED: 2, IN_PROGRESS: 1, COMPLETED: 4, CANCELLED: 1 },
+      findingsTotal: 5,
+      findingsBySeverity: { LOW: 1, MEDIUM: 2, HIGH: 1, CRITICAL: 1 },
+    },
+    audits: {
+      total: 2,
+      byStatus: { PLANNED: 1, IN_PROGRESS: 0, COMPLETED: 1, CANCELLED: 0 },
+      byType: {},
+      findingsTotal: 1,
+      findingsBySeverity: {},
+      checklistByResult: {},
+    },
+    permits: {
+      total: 10,
+      byStatus: {
+        DRAFT: 1,
+        SUBMITTED: 2,
+        APPROVED: 1,
+        ACTIVE: 4,
+        SUSPENDED: 1,
+        CLOSED: 1,
+        REJECTED: 0,
+        CANCELLED: 0,
+      },
+      byWorkType: [],
+      expiringSoon: 2,
+    },
+    correctiveActions: {
+      total: 9,
+      byStatus: { OPEN: 3, IN_PROGRESS: 2, COMPLETED: 3, VERIFIED: 1 },
+      overdue: 2,
+    },
+    riskAssessments: {
+      total: 7,
+      byStatus: { DRAFT: 2, IN_REVIEW: 1, APPROVED: 3, ARCHIVED: 1 },
+      hazardsTotal: 6,
+      hazardsByResidualLevel: { LOW: 1, MEDIUM: 2, HIGH: 2, CRITICAL: 1 },
+      reviewsDue: 1,
+    },
+    training: {
+      sessions: 4,
+      byStatus: { SCHEDULED: 2, COMPLETED: 2, CANCELLED: 0 },
+      attendance: {
+        invited: 12,
+        attended: 9,
+        absent: 3,
+        completed: 8,
+        certificatesIssued: 7,
+        employees: 8,
+        contractors: 4,
+      },
+    },
+    toolboxTalks: {
+      talks: 0,
+      byStatus: { SCHEDULED: 0, COMPLETED: 0, CANCELLED: 0 },
+      attendance: {
+        invited: 0,
+        attended: 0,
+        absent: 0,
+        acknowledged: 0,
+        employees: 0,
+        contractors: 0,
+      },
+    },
+    ...overrides,
+  };
+}
+
 describe("dashboard query construction", () => {
   it("adds bounded date scope and optional project/site filters", () => {
     const filters: DashboardScopeFilters = {
@@ -81,6 +170,35 @@ describe("dashboard query construction", () => {
     expect(searchParams.has("to")).toBe(false);
     expect(searchParams.has("projectId")).toBe(false);
     expect(searchParams.has("siteId")).toBe(false);
+  });
+
+  it("maps the dashboard range onto cross-module report filters", () => {
+    expect(
+      buildReportFilters(
+        {
+          range: "30d",
+          projectId: "507f1f77bcf86cd799439011",
+          siteId: "507f1f77bcf86cd799439012",
+        },
+        NOW,
+      ),
+    ).toEqual({
+      projectId: "507f1f77bcf86cd799439011",
+      siteId: "507f1f77bcf86cd799439012",
+      from: "2026-05-16T12:00:00.000Z",
+      to: NOW.toISOString(),
+    });
+
+    expect(
+      buildReportFilters({ range: "all", projectId: "", siteId: "" }, NOW),
+    ).toEqual({ projectId: "", siteId: "", from: "", to: "" });
+  });
+
+  it("adds the selected site to register links without losing query state", () => {
+    expect(appendSiteFilter("/permits?status=ACTIVE", "site-1")).toBe(
+      "/permits?status=ACTIVE&siteId=site-1",
+    );
+    expect(appendSiteFilter("/incidents", "")).toBe("/incidents");
   });
 
   it("builds bounded incident list queries", () => {
@@ -194,6 +312,43 @@ describe("dashboard KPI derivation", () => {
       totalReports: 0,
       nearMissShare: 0,
     });
+  });
+});
+
+describe("cross-module dashboard derivation", () => {
+  it("derives report KPIs from the existing report aggregate", () => {
+    expect(deriveReportKpis(reportFixture())).toEqual({
+      openCapas: 5,
+      overdueCapas: 2,
+      activePermits: 4,
+      completedInspections: 4,
+      openRiskAssessments: 3,
+      trainingFollowUp: 3,
+    });
+  });
+
+  it("returns null without report data", () => {
+    expect(deriveReportKpis(undefined)).toBeNull();
+  });
+
+  it("builds ordered chart series and omits empty donut segments", () => {
+    const series = chartSeries(
+      { OPEN: 3, IN_PROGRESS: 0, COMPLETED: 2, VERIFIED: 1 },
+      ["OPEN", "IN_PROGRESS", "COMPLETED", "VERIFIED"],
+    );
+
+    expect(series.map((item) => item.label)).toEqual([
+      "Open",
+      "In progress",
+      "Completed",
+      "Verified",
+    ]);
+    expect(seriesTotal(series)).toBe(6);
+    expect(nonZeroSeries(series).map((item) => item.key)).toEqual([
+      "OPEN",
+      "COMPLETED",
+      "VERIFIED",
+    ]);
   });
 });
 

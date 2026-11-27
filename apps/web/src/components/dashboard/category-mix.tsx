@@ -1,91 +1,80 @@
+import Link from "next/link";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import type { HseCategoryCount } from "@/lib/api/types";
-import { formatHseLabel, topCategoryCounts } from "@/lib/hse-dashboard";
+import {
+  formatHseLabel,
+  topCategoryCounts,
+} from "@/lib/hse-dashboard";
+import { DonutChart, type ChartSegment } from "./chart-panels";
 
-function CategoryRow({
-  label,
-  count,
-  max,
-  barClass,
-}: {
-  label: string;
-  count: number;
-  max: number;
-  barClass: string;
-}) {
-  return (
-    <li>
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="min-w-0 truncate text-sm text-ink">{label}</span>
-        <span className="tabular text-sm font-semibold text-ink">{count}</span>
-      </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-navy-100">
-        <div
-          className={`h-full rounded-full ${barClass}`}
-          style={{ width: `${(count / max) * 100}%` }}
-        />
-      </div>
-    </li>
-  );
+function categoryHref(category: string, siteId: string): string {
+  const base = category === "NEAR_MISS" ? "/near-misses" : "/incidents";
+  const params = new URLSearchParams();
+  if (siteId) {
+    params.set("siteId", siteId);
+  }
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
 }
 
 export function CategoryMix({
   categories,
   unclassified,
+  siteId = "",
 }: {
   categories: HseCategoryCount[];
   unclassified: number;
+  siteId?: string;
 }) {
   const { categories: visible, otherCount } = topCategoryCounts(categories, 6);
-  const max = Math.max(
-    ...visible.map((category) => category.count),
-    otherCount,
-    unclassified,
-    1,
-  );
-  const isEmpty = visible.length === 0 && unclassified === 0;
+  const segments: ChartSegment[] = visible.map((category) => ({
+    key: category.category,
+    label: formatHseLabel(category.category),
+    count: category.count,
+    href: categoryHref(category.category, siteId),
+  }));
+
+  if (otherCount > 0) {
+    segments.push({
+      key: "OTHER",
+      label: "Other categories",
+      count: otherCount,
+      href: categoryHref("OTHER", siteId),
+    });
+  }
+
+  if (unclassified > 0) {
+    segments.push({
+      key: "UNCLASSIFIED",
+      label: "Unclassified",
+      count: unclassified,
+      href: categoryHref("UNCLASSIFIED", siteId),
+    });
+  }
+
+  const total = segments.reduce((sum, segment) => sum + segment.count, 0);
 
   return (
     <Card>
       <CardHeader
         title="Incident categories"
         description="Management classification of reports in the selected scope."
+        action={
+          <Link
+            href={categoryHref("ALL", siteId)}
+            className="text-xs font-semibold text-navy-700 hover:text-navy-900 hover:underline"
+          >
+            View reports
+          </Link>
+        }
       />
       <CardBody>
-        {isEmpty ? (
+        {total === 0 ? (
           <p className="py-8 text-center text-sm text-muted">
             No classified reports in this period.
           </p>
         ) : (
-          <ul className="space-y-4">
-            {visible.map((category) => (
-              <CategoryRow
-                key={category.category}
-                label={formatHseLabel(category.category)}
-                count={category.count}
-                max={max}
-                barClass="bg-navy-700"
-              />
-            ))}
-
-            {otherCount > 0 && (
-              <CategoryRow
-                label="Other categories"
-                count={otherCount}
-                max={max}
-                barClass="bg-navy-400"
-              />
-            )}
-
-            {unclassified > 0 && (
-              <CategoryRow
-                label="Unclassified"
-                count={unclassified}
-                max={max}
-                barClass="bg-amber-500"
-              />
-            )}
-          </ul>
+          <DonutChart segments={segments} total={total} totalLabel="Reports" />
         )}
       </CardBody>
     </Card>

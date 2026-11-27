@@ -1,12 +1,8 @@
-import express, {
-  type NextFunction,
-  type Request,
-  type Response,
-} from "express";
+import express from "express";
 import cors from "cors";
 import { getAuth, requireAuth } from "@digit-auth/node";
 import { digitAuth } from "./lib/digit-auth.js";
-import { HttpError } from "./lib/http-error.js";
+import { apiErrorHandler } from "./lib/api-error-handler.js";
 import digitAuthWebhookRouter from "./routes/webhooks/digit-auth.js";
 import departmentsRouter from "./routes/departments.js";
 import employeesRouter from "./routes/employees.js";
@@ -26,6 +22,7 @@ import hseAuditsRouter from "./routes/hse-audits.js";
 import hseReportsRouter from "./routes/hse-reports.js";
 import ppeRouter from "./routes/ppe.js";
 import hseReferenceRouter from "./routes/hse-reference.js";
+import managementOfChangeRouter from "./routes/management-of-change.js";
 
 export const app: express.Express = express();
 
@@ -110,6 +107,7 @@ app.use("/api/incidents", incidentsRouter);
 app.use("/api/corrective-actions", correctiveActionsRouter);
 app.use("/api/inspections", inspectionsRouter);
 app.use("/api/risk-assessments", riskAssessmentsRouter);
+app.use("/api/management-of-change", managementOfChangeRouter);
 app.use("/api/permits", permitsRouter);
 app.use("/api/training", trainingRouter);
 app.use("/api/toolbox-talks", toolboxTalksRouter);
@@ -121,35 +119,4 @@ app.use("/api/hse/reports", hseReportsRouter);
 app.use("/api/hse", hseReferenceRouter);
 
 // Centralized error handler: never expose internal stack traces to clients.
-app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  console.error("API request error:", error);
-
-  // Intentional application errors carry a safe, client-facing message.
-  if (error instanceof HttpError) {
-    res.status(error.status).json({
-      success: false,
-      message: error.message,
-    });
-    return;
-  }
-
-  const status =
-    typeof error === "object" &&
-    error !== null &&
-    "status" in error &&
-    typeof error.status === "number"
-      ? error.status
-      : 500;
-
-  const message =
-    status === 401
-      ? "Authentication required."
-      : status >= 400 && status < 500
-        ? "Request could not be processed."
-        : "Internal server error.";
-
-  res.status(status).json({
-    success: false,
-    message,
-  });
-});
+app.use(apiErrorHandler);

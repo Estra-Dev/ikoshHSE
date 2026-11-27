@@ -20,6 +20,8 @@ export const AUDIT_ENTITY_TYPES = [
   "User",
   "RiskAssessment",
   "HseAudit",
+  "Permit",
+  "ManagementOfChange",
 ] as const;
 
 export interface AuditLogQueryState {

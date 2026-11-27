@@ -1,24 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ApiError } from "@/lib/api/client";
+import { useMe } from "@/lib/api/employees";
 import { useHseDashboard, useSiteHseDashboards } from "@/lib/api/hse";
+import { useHseReport } from "@/lib/api/reports";
 import { useProjects, useSites } from "@/lib/api/worksites";
 import { Button, ErrorState, Spinner } from "@/components/ui/feedback";
 import { Card, CardBody } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { RefreshIcon } from "@/components/icons";
 import { CategoryMix } from "@/components/dashboard/category-mix";
+import {
+  CapaStatusChart,
+  PermitStatusChart,
+  RiskLevelChart,
+} from "@/components/dashboard/chart-panels";
 import { DashboardKpis } from "@/components/dashboard/dashboard-kpis";
 import { LatestReports } from "@/components/dashboard/latest-reports";
+import { ManagementAttention } from "@/components/dashboard/management-attention";
 import { MyReports } from "@/components/dashboard/my-reports";
 import { OutstandingQueues } from "@/components/dashboard/outstanding-queues";
 import { ReportingTrend } from "@/components/dashboard/reporting-trend";
 import { SitePerformance } from "@/components/dashboard/site-performance";
 import { DashboardScopeControls } from "@/components/dashboard/scope-controls";
 import { StatusPipeline } from "@/components/dashboard/status-pipeline";
+import { canViewReports } from "@/lib/permissions";
 import {
+  buildReportFilters,
+  canScopeRecentReports,
   deriveDashboardKpis,
+  deriveReportKpis,
   EMPTY_DASHBOARD_FILTERS,
   selectComparisonSites,
   type DashboardRange,
@@ -34,9 +46,16 @@ export default function DashboardPage() {
     EMPTY_DASHBOARD_FILTERS,
   );
 
+  const me = useMe();
   const projects = useProjects();
   const sites = useSites({ projectId: filters.projectId });
   const dashboardQuery = useHseDashboard(filters);
+
+  const reportsAllowed = canViewReports(me.data?.employee.ikoshRole);
+  const reportFilters = useMemo(() => buildReportFilters(filters), [filters]);
+  const reportQuery = useHseReport(reportFilters, {
+    enabled: reportsAllowed,
+  });
 
   const siteList = sites.data?.sites ?? [];
   const comparisonSites = selectComparisonSites(siteList, filters);
@@ -47,6 +66,8 @@ export default function DashboardPage() {
 
   const dashboard = dashboardQuery.data?.data;
   const kpis = deriveDashboardKpis(dashboard);
+  const report = reportQuery.data?.data;
+  const reportKpis = deriveReportKpis(report);
 
   const selectedProject = filters.projectId
     ? projects.data?.projects.find(
@@ -77,6 +98,23 @@ export default function DashboardPage() {
     dashboardQuery.error.status === 404 &&
     Boolean(filters.projectId);
 
+  const detailsScopable = canScopeRecentReports(filters);
+  const reportChartProps = {
+    report,
+    siteId: filters.siteId,
+    isLoading: reportsAllowed && reportQuery.isLoading,
+    error: reportsAllowed ? reportQuery.error : undefined,
+    onRetry: () => void reportQuery.refetch(),
+  };
+
+  function refreshAll() {
+    void dashboardQuery.refetch();
+    if (reportsAllowed) {
+      void reportQuery.refetch();
+    }
+    comparisonQueries.forEach((query) => void query.refetch());
+  }
+
   function handleRangeChange(range: DashboardRange) {
     setFilters((current) => ({ ...current, range }));
   }
@@ -94,19 +132,16 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       <PageHeader
         eyebrow="HSE operations"
         title="HSE command centre"
-        description="Incidents, near misses and reporting assurance across the sites in your scope. Every figure is derived from live, site-scoped HSE records."
+        description="Live incidents, corrective actions, permits, inspections and risk assurance across the sites in your scope. Every figure comes from existing, site-scoped HSE records."
         actions={
           <Button
             variant="secondary"
-            onClick={() => {
-              void dashboardQuery.refetch();
-              void comparisonQueries.forEach((query) => query.refetch());
-            }}
-            isLoading={dashboardQuery.isFetching}
+            onClick={refreshAll}
+            isLoading={dashboardQuery.isFetching || reportQuery.isFetching}
           >
             <RefreshIcon size={16} />
             Refresh
@@ -122,7 +157,7 @@ export default function DashboardPage() {
         sites={siteList}
         scopeLabel={scopeLabel}
         scopeNote={scopeNote}
-        isFetching={dashboardQuery.isFetching}
+        isFetching={dashboardQuery.isFetching || reportQuery.isFetching}
         lastUpdated={dashboard?.lastUpdated}
         projectsLoading={projects.isLoading}
         sitesLoading={sites.isLoading}
@@ -131,9 +166,54 @@ export default function DashboardPage() {
         onSiteChange={handleSiteChange}
       />
 
-      <DashboardKpis kpis={kpis} />
+      <section aria-labelledby="dashboard-kpi-title" className="space-y-2">
+        <h2
+          id="dashboard-kpi-title"
+          className="text-[11px] font-semibold uppercase tracking-[0.14em] text-navy-600"
+        >
+          Key indicators
+        </h2>
+        <DashboardKpis
+          kpis={kpis}
+          reportKpis={reportKpis}
+          showReportKpis={reportsAllowed}
+          reportLoading={reportsAllowed && reportQuery.isLoading}
+          reportError={reportsAllowed ? reportQuery.error : undefined}
+          siteId={filters.siteId}
+        />
+        {reportsAllowed && (
+          <p className="text-xs leading-5 text-muted">
+            Date-filtered figures follow the selected range. Overdue CAPAs,
+            permit expiry and certificate flags reflect current status.
+          </p>
+        )}
+        {me.isLoading && (
+          <p role="status" className="text-xs text-muted">
+            Checking role-based report access…
+          </p>
+        )}
+        {me.isError && (
+          <p role="alert" className="text-xs text-red-700">
+            Role-based report panels are unavailable until your profile loads.
+          </p>
+        )}
+      </section>
 
       <MyReports sites={siteList} />
+
+      {reportsAllowed &&
+        (detailsScopable ? (
+          <ManagementAttention filters={filters} />
+        ) : (
+          <Card>
+            <CardBody>
+              <p className="text-sm text-muted">
+                Detailed attention queues are site-scoped. Select a site to view
+                them; aggregate figures above still follow the selected project.
+              </p>
+            </CardBody>
+          </Card>
+        ))}
 
       {dashboardQuery.isError && !dashboard ? (
         <ErrorState
@@ -180,12 +260,42 @@ export default function DashboardPage() {
             </p>
           )}
 
-          <div className="grid gap-5 xl:grid-cols-3">
-            <div className="xl:col-span-2">
-              <ReportingTrend trend={dashboard.incidents.trend} />
+          <section aria-labelledby="dashboard-charts-title" className="space-y-3">
+            <div>
+              <h2
+                id="dashboard-charts-title"
+                className="text-[11px] font-semibold uppercase tracking-[0.14em] text-navy-600"
+              >
+                Risk picture
+              </h2>
+              <p className="mt-1 text-sm text-muted">
+                Trends and distributions from live HSE records in the selected
+                scope.
+              </p>
             </div>
-            <OutstandingQueues dashboard={dashboard} />
-          </div>
+
+            <div className="grid gap-5 xl:grid-cols-3">
+              <div className="xl:col-span-2">
+                <ReportingTrend
+                  trend={dashboard.incidents.trend}
+                  siteId={filters.siteId}
+                />
+              </div>
+              <CategoryMix
+                categories={dashboard.incidents.byCategory}
+                unclassified={dashboard.incidents.unclassified}
+                siteId={filters.siteId}
+              />
+            </div>
+
+            {reportsAllowed && (
+              <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
+                <CapaStatusChart {...reportChartProps} />
+                <PermitStatusChart {...reportChartProps} />
+                <RiskLevelChart {...reportChartProps} />
+              </div>
+            )}
+          </section>
 
           <div className="grid gap-5 xl:grid-cols-3">
             <div className="xl:col-span-2">
@@ -206,14 +316,13 @@ export default function DashboardPage() {
                 siteFilterActive={Boolean(filters.siteId)}
               />
             </div>
-            <StatusPipeline byStatus={dashboard.incidents.byStatus} />
+            <OutstandingQueues dashboard={dashboard} />
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-2">
-            <CategoryMix
-              categories={dashboard.incidents.byCategory}
-              unclassified={dashboard.incidents.unclassified}
-            />
+          <div className="grid gap-5 xl:grid-cols-3">
+            <div className="xl:col-span-2">
+              <StatusPipeline byStatus={dashboard.incidents.byStatus} />
+            </div>
             <LatestReports filters={filters} sites={siteList} />
           </div>
         </>

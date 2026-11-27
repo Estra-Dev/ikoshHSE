@@ -7,6 +7,7 @@ import type { CorrectiveActionDocument } from "../models/CorrectiveAction.js";
 import type { IncidentDocument } from "../models/Incident.js";
 import type { InspectionDocument } from "../models/Inspection.js";
 import type { HseAuditDocument } from "../models/HseAudit.js";
+import type { ManagementOfChangeDocument } from "../models/ManagementOfChange.js";
 import type { PermitDocument } from "../models/Permit.js";
 import type { PpeIssuanceDocument } from "../models/PpeIssuance.js";
 import type { PpeItemDocument } from "../models/PpeItem.js";
@@ -261,6 +262,79 @@ export function hseAuditAuditSnapshot(
     linkedCorrectiveActionCount: findings.filter(
       (finding) => finding.correctiveAction,
     ).length,
+  };
+}
+
+/**
+ * Management of Change snapshots record workflow, scope references and
+ * assessment completeness only. Titles, reasons, scopes, assessment text,
+ * implementation plans and verification findings are free text and are
+ * deliberately excluded. Approval comments are retained because they are the
+ * recorded rationale for an approval decision.
+ */
+export function managementOfChangeAuditSnapshot(
+  change: WithId<ManagementOfChangeDocument>,
+): Record<string, unknown> {
+  const assessment = change.impactAssessment ?? null;
+  const implementation = change.implementationPlan ?? null;
+  const verification = change.verification ?? null;
+  const approvals = change.approvals ?? [];
+
+  return {
+    reference: change.reference,
+    project: idOf(change.project),
+    site: idOf(change.site),
+    changeOwner: idOf(change.changeOwner),
+    submittedBy: idOf(change.submittedBy),
+    submittedAt: dateOf(change.submittedAt),
+    changeType: change.changeType,
+    status: change.status,
+    plannedStartAt: dateOf(change.plannedStartAt),
+    plannedEndAt: dateOf(change.plannedEndAt),
+    affectedAssetCount: (change.affectedAssets ?? []).length,
+    affectedPeopleCount: (change.affectedPeople ?? []).length,
+    assessment: assessment
+      ? {
+          riskAssessment: idOf(assessment.riskAssessment),
+          completedSections: [
+            assessment.qhseRisks,
+            assessment.environmentalAspects,
+            assessment.legalAndClientObligations,
+            assessment.competenceRequirements,
+            assessment.procedureChanges,
+            assessment.emergencyArrangements,
+            assessment.interfaces,
+          ].filter((value) => Boolean(value?.trim())).length,
+        }
+      : null,
+    implementation: implementation
+      ? {
+          briefingCompleted: implementation.briefingCompleted,
+          briefingAt: dateOf(implementation.briefingAt),
+          updatedDocumentCount: (implementation.updatedDocuments ?? []).length,
+        }
+      : null,
+    approvals: approvals.map((approval) => ({
+      approvalType: approval.approvalType,
+      approver: idOf(approval.approver),
+      authorityBasis: approval.authorityBasis,
+      decision: approval.decision,
+      comments: approval.comments,
+      decidedAt: dateOf(approval.decidedAt),
+    })),
+    verification: verification
+      ? {
+          testingCompleted: verification.testingCompleted,
+          inspectionCompleted: verification.inspectionCompleted,
+          actionsClosed: verification.actionsClosed,
+          verifiedBy: idOf(verification.verifiedBy),
+          verifiedAt: dateOf(verification.verifiedAt),
+        }
+      : null,
+    emergencyChange: change.emergencyChange,
+    closedBy: idOf(change.closedBy),
+    closedAt: dateOf(change.closedAt),
+    createdBy: idOf(change.createdBy),
   };
 }
 

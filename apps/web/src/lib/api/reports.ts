@@ -15,7 +15,10 @@ export const reportKeys = {
 };
 
 /** Cross-module HSE report, scoped server-side to the viewer's sites. */
-export function useHseReport(filters: ReportFilterState) {
+export function useHseReport(
+  filters: ReportFilterState,
+  options: { enabled?: boolean } = {},
+) {
   const api = useApi();
 
   return useQuery({
@@ -26,5 +29,6 @@ export function useHseReport(filters: ReportFilterState) {
         buildReportFilterSearchParams(filters),
       ),
     placeholderData: keepPreviousData,
+    enabled: options.enabled !== false,
   });
 }

@@ -1,11 +1,13 @@
 import type {
   HseCategoryCount,
   HseDashboard,
+  HseReport,
   HseTrendPoint,
   IncidentStatus,
   IncidentType,
   SiteSummary,
 } from "./api/types";
+import type { ReportFilterState } from "./reports";
 
 /**
  * Pure dashboard helpers.
@@ -82,6 +84,39 @@ export function buildDashboardSearchParams(
   }
 
   return searchParams;
+}
+
+/**
+ * Maps the dashboard scope onto the existing cross-module report endpoint.
+ * The same range calculation drives both requests so every date-filtered
+ * aggregate and chart covers the same window.
+ */
+export function buildReportFilters(
+  filters: DashboardScopeFilters,
+  now: Date = new Date(),
+): ReportFilterState {
+  const from = dashboardRangeStart(filters.range, now);
+
+  return {
+    projectId: filters.projectId,
+    siteId: filters.siteId,
+    from: from ? from.toISOString() : "",
+    to: from ? now.toISOString() : "",
+  };
+}
+
+/** Adds the selected site to a register link without dropping existing query state. */
+export function appendSiteFilter(href: string, siteId: string): string {
+  if (!siteId) {
+    return href;
+  }
+
+  const [path, query = ""] = href.split("?");
+  const searchParams = new URLSearchParams(query);
+  searchParams.set("siteId", siteId);
+  const encoded = searchParams.toString();
+
+  return encoded ? `${path}?${encoded}` : path;
 }
 
 export interface IncidentListQuery {
@@ -193,6 +228,79 @@ export function deriveDashboardKpis(
     totalReports,
     nearMissShare: totalReports > 0 ? nearMisses / totalReports : 0,
   };
+}
+
+export interface ReportKpis {
+  openCapas: number;
+  overdueCapas: number;
+  activePermits: number;
+  completedInspections: number;
+  openRiskAssessments: number;
+  trainingFollowUp: number;
+}
+
+function statusCount(
+  counts: Record<string, number>,
+  status: string,
+): number {
+  return Math.max(0, counts[status] ?? 0);
+}
+
+/**
+ * Derives cross-module KPIs from the report aggregate. Current-state counts
+ * (`overdueCapas`) are passed through from the server and are never treated as
+ * date-ranged figures.
+ */
+export function deriveReportKpis(
+  report: HseReport | undefined,
+): ReportKpis | null {
+  if (!report) {
+    return null;
+  }
+
+  return {
+    openCapas:
+      statusCount(report.correctiveActions.byStatus, "OPEN") +
+      statusCount(report.correctiveActions.byStatus, "IN_PROGRESS"),
+    overdueCapas: Math.max(0, report.correctiveActions.overdue),
+    activePermits: statusCount(report.permits.byStatus, "ACTIVE"),
+    completedInspections: statusCount(
+      report.inspections.byStatus,
+      "COMPLETED",
+    ),
+    openRiskAssessments:
+      statusCount(report.riskAssessments.byStatus, "DRAFT") +
+      statusCount(report.riskAssessments.byStatus, "IN_REVIEW"),
+    trainingFollowUp: Math.max(0, report.training.attendance.absent),
+  };
+}
+
+export interface ChartDatum {
+  key: string;
+  label: string;
+  count: number;
+}
+
+/** Builds an ordered chart series from an API status/level facet. */
+export function chartSeries(
+  counts: Record<string, number>,
+  keys: readonly string[],
+  labels?: Record<string, string>,
+): ChartDatum[] {
+  return keys.map((key) => ({
+    key,
+    label: labels?.[key] ?? formatHseLabel(key),
+    count: Math.max(0, counts[key] ?? 0),
+  }));
+}
+
+/** Omits empty segments from donut charts while preserving order. */
+export function nonZeroSeries(series: readonly ChartDatum[]): ChartDatum[] {
+  return series.filter((item) => item.count > 0);
+}
+
+export function seriesTotal(series: readonly ChartDatum[]): number {
+  return series.reduce((total, item) => total + item.count, 0);
 }
 
 export interface TrendSummary {

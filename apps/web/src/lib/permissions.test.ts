@@ -58,6 +58,16 @@ import {
   canViewPermits,
   canUploadCorrectiveActionEvidence,
   canVerifyCorrectiveAction,
+  canApproveManagementOfChangeManagement,
+  canApproveManagementOfChangeTechnical,
+  canAssessManagementOfChange,
+  canCreateManagementOfChange,
+  canEditManagementOfChangeAssessment,
+  canImplementManagementOfChange,
+  canManageManagementOfChange,
+  canSubmitManagementOfChange,
+  canVerifyManagementOfChange,
+  canViewManagementOfChange,
   canViewAuditLog,
   canViewCorrectiveActions,
   canEditCorrectiveAction,
@@ -873,5 +883,69 @@ describe("permit permissions", () => {
         }),
       ).toBe(false);
     }
+  });
+});
+
+describe("management of change permissions", () => {
+  it("mirrors the server capability matrix", () => {
+    for (const role of ALL_ROLES) {
+      const isHseStaff = MANAGEMENT_ROLES.includes(role);
+      const isManagement = role === "HSE_MANAGER" || role === "ADMIN";
+      const isAuthor = role !== "SUPERVISOR" && isHseStaff;
+
+      expect(canViewManagementOfChange(role)).toBe(isHseStaff);
+      expect(canCreateManagementOfChange(role)).toBe(isAuthor);
+      expect(canAssessManagementOfChange(role)).toBe(isAuthor);
+      expect(canImplementManagementOfChange(role)).toBe(isAuthor);
+      expect(canVerifyManagementOfChange(role)).toBe(isAuthor);
+      expect(canManageManagementOfChange(role)).toBe(isManagement);
+    }
+
+    for (const can of [
+      canViewManagementOfChange,
+      canCreateManagementOfChange,
+      canAssessManagementOfChange,
+      canImplementManagementOfChange,
+      canVerifyManagementOfChange,
+      canManageManagementOfChange,
+      canSubmitManagementOfChange,
+    ]) {
+      expect(can(undefined)).toBe(false);
+    }
+  });
+
+  it("keeps submission restricted to HSE managers and administrators", () => {
+    for (const role of ALL_ROLES) {
+      expect(canSubmitManagementOfChange(role)).toBe(
+        role === "HSE_MANAGER" || role === "ADMIN",
+      );
+    }
+  });
+
+  it("separates technical and management approval roles", () => {
+    for (const role of ALL_ROLES) {
+      expect(canApproveManagementOfChangeTechnical(role)).toBe(
+        role === "HSE_MANAGER",
+      );
+      expect(canApproveManagementOfChangeManagement(role)).toBe(
+        role === "ADMIN",
+      );
+    }
+  });
+
+  it("allows assessment edits only in draft or assessment status", () => {
+    expect(canEditManagementOfChangeAssessment("HSE_OFFICER", "DRAFT")).toBe(
+      true,
+    );
+    expect(
+      canEditManagementOfChangeAssessment("HSE_OFFICER", "ASSESSMENT"),
+    ).toBe(true);
+    expect(
+      canEditManagementOfChangeAssessment("HSE_OFFICER", "PENDING_APPROVAL"),
+    ).toBe(false);
+    expect(canEditManagementOfChangeAssessment("SUPERVISOR", "DRAFT")).toBe(
+      false,
+    );
+    expect(canEditManagementOfChangeAssessment("ADMIN", "CLOSED")).toBe(false);
   });
 });

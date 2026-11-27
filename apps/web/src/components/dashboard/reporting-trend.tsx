@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { formatUtcDate } from "@/lib/dashboard-format";
-import { summariseTrend } from "@/lib/hse-dashboard";
+import { appendSiteFilter, summariseTrend } from "@/lib/hse-dashboard";
 import type { HseTrendPoint } from "@/lib/api/types";
 
 function TrendLine({ trend }: { trend: readonly HseTrendPoint[] }) {
@@ -17,16 +18,20 @@ function TrendLine({ trend }: { trend: readonly HseTrendPoint[] }) {
     date: point.date,
   }));
 
+  const line = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const area = `0,40 ${line} ${points[points.length - 1].x},40`;
+  const midDate = trend[Math.floor(trend.length / 2)].date;
+
   return (
     <div>
       <svg
         viewBox="0 0 100 40"
         preserveAspectRatio="none"
         role="img"
-        aria-label={`Reporting trend from ${formatUtcDate(
+        aria-label={`Incident reporting trend from ${formatUtcDate(
           trend[0].date,
         )} to ${formatUtcDate(trend[trend.length - 1].date)}`}
-        className="h-40 w-full overflow-visible"
+        className="h-44 w-full overflow-visible"
       >
         {[8, 16, 24, 32].map((y) => (
           <line
@@ -41,15 +46,19 @@ function TrendLine({ trend }: { trend: readonly HseTrendPoint[] }) {
           />
         ))}
 
+        <polygon points={area} className="fill-navy-50" />
+
         <polyline
-          points={points.map((point) => `${point.x},${point.y}`).join(" ")}
+          points={line}
           fill="none"
           className="stroke-navy-700"
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
           vectorEffect="non-scaling-stroke"
-        />
+        >
+          <title>Daily incident and near-miss reports</title>
+        </polyline>
 
         {points.length === 1 && (
           <circle
@@ -83,22 +92,45 @@ function TrendLine({ trend }: { trend: readonly HseTrendPoint[] }) {
           ))}
       </svg>
 
-      <div className="mt-2 flex items-center justify-between text-[11px] text-muted">
+      <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-muted">
         <span>{formatUtcDate(trend[0].date)}</span>
+        <span className="hidden sm:inline">{formatUtcDate(midDate)}</span>
         <span>{formatUtcDate(trend[trend.length - 1].date)}</span>
+      </div>
+
+      <div className="mt-3 flex items-center gap-2 text-xs text-muted">
+        <span
+          aria-hidden="true"
+          className="h-0.5 w-5 rounded-full bg-navy-700"
+        />
+        <span>Incidents and near misses per day</span>
       </div>
     </div>
   );
 }
 
-export function ReportingTrend({ trend }: { trend: HseTrendPoint[] }) {
+export function ReportingTrend({
+  trend,
+  siteId = "",
+}: {
+  trend: HseTrendPoint[];
+  siteId?: string;
+}) {
   const summary = summariseTrend(trend);
 
   return (
     <Card>
       <CardHeader
-        title="Reporting trend"
-        description="All incident and near-miss reports by day in the selected period."
+        title="Incident reporting trend"
+        description="Incidents and near misses by day in the selected period."
+        action={
+          <Link
+            href={appendSiteFilter("/incidents", siteId)}
+            className="text-xs font-semibold text-navy-700 hover:text-navy-900 hover:underline"
+          >
+            View reports
+          </Link>
+        }
       />
       <CardBody>
         {trend.length === 0 ? (

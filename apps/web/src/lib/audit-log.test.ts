@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUDIT_ENTITY_TYPES,
   AUDIT_LOG_DEFAULT_LIMIT,
   buildAuditLogSearchParams,
   EMPTY_AUDIT_LOG_QUERY,
   hasActiveAuditLogFilters,
   isValidObjectId,
 } from "./audit-log";
+
+describe("audit log entity types", () => {
+  it("offers the Permit entity type used by permit audit events", () => {
+    expect(AUDIT_ENTITY_TYPES).toContain("Permit");
+  });
+
+  it("offers the ManagementOfChange entity type used by change audit events", () => {
+    expect(AUDIT_ENTITY_TYPES).toContain("ManagementOfChange");
+  });
+});
 
 describe("audit log query", () => {
   it("omits empty filters and always sends the limit", () => {
